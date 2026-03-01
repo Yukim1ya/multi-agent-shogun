@@ -18,6 +18,30 @@ echo "=== Instruction File Build System ==="
 echo "Building instruction files..."
 
 # ============================================================
+# Helper function: Filter role-specific sections from a file
+# Sections between <!-- BEGIN_SHOGUN_KARO_ONLY --> and
+# <!-- END_SHOGUN_KARO_ONLY --> are excluded for ashigaru/gunshi.
+# ============================================================
+append_filtered() {
+    local role="$1"
+    local src="$2"
+    local dst="$3"
+    case "$role" in
+        ashigaru|gunshi)
+            awk '
+                /<!-- BEGIN_SHOGUN_KARO_ONLY -->/ { skip=1; next }
+                /<!-- END_SHOGUN_KARO_ONLY -->/   { skip=0; next }
+                !skip { print }
+            ' "$src" >> "$dst"
+            ;;
+        *)
+            # shogun/karo: include everything, strip marker comments
+            grep -v '<!-- BEGIN_SHOGUN_KARO_ONLY -->\|<!-- END_SHOGUN_KARO_ONLY -->' "$src" >> "$dst"
+            ;;
+    esac
+}
+
+# ============================================================
 # Helper function: Build a complete instruction file
 # ============================================================
 build_instruction_file() {
@@ -52,7 +76,7 @@ EOFYAML
     echo "" >> "$output_path"
     cat "$PARTS_DIR/common/protocol.md" >> "$output_path"
     echo "" >> "$output_path"
-    cat "$PARTS_DIR/common/task_flow.md" >> "$output_path"
+    append_filtered "$role" "$PARTS_DIR/common/task_flow.md" "$output_path"
     echo "" >> "$output_path"
     cat "$PARTS_DIR/common/forbidden_actions.md" >> "$output_path"
 

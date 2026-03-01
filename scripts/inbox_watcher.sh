@@ -27,6 +27,13 @@
 if [ "${__INBOX_WATCHER_TESTING__:-}" != "1" ]; then
     set -euo pipefail
 
+    # Clean exit on signals — prevents orphaned watcher processes (Bug 2 fix)
+    _watcher_cleanup() {
+        echo "[$(date)] inbox_watcher exiting for ${AGENT_ID:-unknown} (PID $$)" >&2
+        exit 0
+    }
+    trap _watcher_cleanup SIGTERM SIGINT SIGHUP
+
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
     AGENT_ID="$1"
     PANE_TARGET="$2"
@@ -491,13 +498,14 @@ send_cli_command() {
             fi
             ;;
         copilot)
-            # Copilot: /clearはCtrl-C+再起動, /model非対応→スキップ
+            # Copilot v0.0.420+: /clear コマンドがネイティブ対応（2026-02-28検証済み）
+            # オートコンプリートが表示されるため Enter×2 が必要
             if [[ "$cmd" == "/clear" ]]; then
-                echo "[$(date)] [SEND-KEYS] Copilot /clear: sending Ctrl-C + restart for $AGENT_ID" >&2
-                timeout 5 tmux send-keys -t "$PANE_TARGET" C-c 2>/dev/null || true
-                sleep 2
-                timeout 5 tmux send-keys -t "$PANE_TARGET" "copilot --yolo" 2>/dev/null || true
-                sleep 0.3
+                echo "[$(date)] [SEND-KEYS] Copilot /clear: sending /clear + Enter×2 for $AGENT_ID" >&2
+                timeout 5 tmux send-keys -t "$PANE_TARGET" "/clear" 2>/dev/null || true
+                sleep 0.5
+                timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
+                sleep 1
                 timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
                 sleep 3
                 return 0
@@ -628,7 +636,8 @@ send_context_reset() {
     sleep 1.0
     timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
     # Mark /clear timestamp so agent_is_busy() treats it as busy during processing
-    if [[ "$reset_cmd" == "/clear" ]]; then
+    # Copilot CLI /clear is near-instant — skip cooldown to avoid 30s false-busy
+    if [[ "$reset_cmd" == "/clear" && "$effective_cli" != "copilot" ]]; then
         LAST_CLEAR_TS=$(date +%s)
     fi
 
@@ -719,6 +728,31 @@ session_has_client() {
     [ -n "$session_name" ] && [ "$(tmux list-clients -t "$session_name" 2>/dev/null | wc -l)" -gt 0 ]
 }
 
+# ─── Claude Code feedback prompt auto-dismiss ───
+# Claude Code shows "How is Claude doing this session?" at the end of every turn.
+# If left unattended, repeated nudges cause the agent to loop and lose role identity.
+# This function detects the prompt and sends "0" (Dismiss) automatically.
+# Returns 0 if prompt was found and dismissed, 1 if not found.
+dismiss_feedback_prompt_if_present() {
+    local cli_type
+    cli_type=$(get_effective_cli_type)
+    # Only applicable to Claude Code agents
+    if [[ "$cli_type" != "claude" ]]; then
+        return 1
+    fi
+
+    local pane_content
+    pane_content=$(timeout 2 tmux capture-pane -t "$PANE_TARGET" -p 2>/dev/null || true)
+    if echo "$pane_content" | grep -q "How is Claude doing this session"; then
+        echo "[$(date)] [FEEDBACK] Auto-dismissing feedback prompt for $AGENT_ID" >&2
+        timeout 5 tmux send-keys -t "$PANE_TARGET" "0" 2>/dev/null || true
+        sleep 0.3
+        timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
+        return 0
+    fi
+    return 1
+}
+
 # ─── Send wake-up nudge ───
 # Layered approach:
 #   1. If agent has active inotifywait self-watch → skip (agent wakes itself)
@@ -763,6 +797,10 @@ send_wakeup() {
     # 優先度3: tmux send-keys（テキストとEnterを分離 — Codex TUI対策）
     echo "[$(date)] [SEND-KEYS] Sending nudge to $PANE_TARGET for $AGENT_ID" >&2
 
+    # Claude Code: dismiss feedback prompt before injecting nudge text.
+    # The prompt blocks input; if not cleared first, nudge text lands in the wrong field.
+    dismiss_feedback_prompt_if_present || true
+
     # Codex suggestion UI dismissal: typing any character dismisses the autocomplete
     # suggestion prompt (› Implement {feature} etc.) that traps idle agents.
     # Sequence: "x" (dismiss suggestion) → C-u (clear input) → nudge → Enter
@@ -775,7 +813,15 @@ send_wakeup() {
         sleep 0.3
     fi
 
-    if timeout 5 tmux send-keys -t "$PANE_TARGET" "$nudge" 2>/dev/null; then
+    # Copilot CLIは "inboxN" を理解しないため明示的な指示テキストを使用
+    local send_text="$nudge"
+    if [[ "$effective_cli_for_nudge" == "copilot" ]]; then
+        # Phase 2 escalation: Escape×2 + nudge for Copilot
+        timeout 5 tmux send-keys -t "$PANE_TARGET" Escape Escape 2>/dev/null || true
+        sleep 0.5
+        send_text="@queue/inbox/${AGENT_ID}.yaml を読め。read: falseのエントリを全て処理せよ。task_assignedがあれば @queue/tasks/${AGENT_ID}.yaml を読んで記載の手順を即座に実行せよ。説明・計画の記述は不要。最初のステップをすぐ実行せよ。"
+    fi
+    if timeout 5 tmux send-keys -t "$PANE_TARGET" "$send_text" 2>/dev/null; then
         sleep 0.3
         timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
         echo "[$(date)] Wake-up sent to $AGENT_ID (${unread_count} unread)" >&2
@@ -1036,6 +1082,9 @@ for s in data.get('specials', []):
                     LAST_CLEAR_TS=$now
                     FIRST_UNREAD_SEEN=0  # Reset — will re-detect on next cycle
                     NEW_CONTEXT_SENT=0
+                    # Bug fix: return immediately after Phase 3 /clear to prevent
+                    # nudge from being sent in the same cycle (/clearinbox2 bug)
+                    return 0
                 fi
             else
                 # Cooldown active — fall back to Escape+nudge
@@ -1053,6 +1102,10 @@ for s in data.get('specials', []):
         # Clear stale nudge text from input field (Codex CLI prefills last input on idle).
         # Only send C-u when agent is idle — during Working it would be disruptive.
         if ! agent_is_busy; then
+            # Claude Code: proactively dismiss feedback prompt on each idle cycle.
+            # This prevents the prompt from accumulating across turns and causing
+            # role mis-identification (e.g. karo calling itself shogun).
+            dismiss_feedback_prompt_if_present || true
             # Shogun: only clear input when pane is not active (Lord is away)
             if [ "$AGENT_ID" = "shogun" ] && pane_is_active; then
                 : # Lord may be typing — skip C-u
@@ -1074,11 +1127,17 @@ if [ "${__INBOX_WATCHER_TESTING__:-}" != "1" ]; then
 process_unread_once
 
 # ─── Main loop: event-driven via inotifywait ───
-# Timeout 30s: WSL2 /mnt/c/ can miss inotify events.
+# Timeout 15s: WSL2 /mnt/c/ can miss inotify events.
 # Shorter timeout = faster escalation retry for stuck agents.
-INOTIFY_TIMEOUT="${INOTIFY_TIMEOUT:-30}"
+INOTIFY_TIMEOUT="${INOTIFY_TIMEOUT:-15}"
 
 while true; do
+    # Exit if target pane no longer exists (prevents zombie watchers — Bug 2 fix)
+    if ! tmux display-message -t "$PANE_TARGET" -p '#{pane_id}' &>/dev/null; then
+        echo "[$(date)] inbox_watcher: pane $PANE_TARGET no longer exists. Exiting." >&2
+        exit 0
+    fi
+
     # Block until file is modified OR timeout
     # Backend-specific file watching: inotifywait (Linux) or fswatch (macOS)
     set +e
@@ -1119,7 +1178,7 @@ while true; do
     # rc=1: watch invalidated — Claude Code uses atomic write (tmp+rename),
     #        which replaces the inode. inotifywait sees DELETE_SELF → rc=1.
     #        File still exists with new inode. Treat as event, re-watch next loop.
-    # rc=2: timeout (30s safety net for WSL2 inotify gaps / macOS fswatch timeout)
+    # rc=2: timeout (15s safety net for WSL2 inotify gaps / macOS fswatch timeout)
     # All cases: check for unread, then loop back (re-watches new inode)
     sleep 0.3
 

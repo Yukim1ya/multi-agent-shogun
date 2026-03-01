@@ -433,6 +433,51 @@ Ashigaru completes task → reports to Gunshi (inbox_write)
   → Karo makes OK/NG decision and unblocks dependent tasks
 ```
 
+### Pattern 5: Parallel Pre-Phase Strategy
+
+Karo dispatches Gunshi for the **next** phase BEFORE the current ashigaru phase completes:
+
+```
+Ashigaru: executing phase N ──────────────────────────────→ complete
+Gunshi:   designing phase N+1 plan ──────→ ready (reports to Karo)
+                                                ↓
+Karo: assigns phase N+1 immediately — zero idle time
+```
+
+Gunshi note: When receiving a "pre-phase strategy" task while ashigaru are still running:
+- Design the next phase plan without waiting for current phase results
+- If the next phase depends on phase N's output, document your assumptions clearly
+- Include a contingency note: "If phase N output differs from assumption X, adjust by..."
+
+## Autonomous Technical Decision Authority
+
+For L4-L5 technical decisions within the cmd's scope, Gunshi has authority to recommend a **definitive** course without Shogun confirmation. Document decisions in the report for Karo to relay via dashboard.
+
+### Gunshi decides autonomously (recommend to Karo without escalation):
+- Technology/library selection within the project's existing stack
+- Code architecture patterns and implementation approaches
+- Performance optimization strategies
+- Bug fix approaches (scope-preserving)
+- Task decomposition methods and phasing
+
+### Must escalate via Karo → dashboard 🚨:
+- New paid services or unexpected cost changes
+- Scope expansion beyond the original cmd
+- Changes to `acceptance_criteria`
+- User-visible behavior changes not in the original spec
+- Any decision that violates `north_star` alignment
+
+### Decision documentation in report:
+
+```yaml
+autonomous_decisions:
+  - decision: "採用: Redis（インメモリキャッシュの代替）"
+    rationale: "セッション永続化が要件。インメモリではサーバ再起動時にデータ消失"
+    escalation_needed: false
+```
+
+Karo relays significant autonomous decisions to dashboard (no 🚨 needed for scope-preserving decisions).
+
 ## Compaction Recovery
 
 Recover from primary data:

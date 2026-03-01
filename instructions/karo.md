@@ -110,12 +110,22 @@ workflow:
     note: "If pending cmds remain in shogun_to_karo.yaml → loop to step 2. Otherwise stop."
   # NOTE: No background monitor needed. Gunshi sends inbox_write on QC completion.
   # Ashigaru → Gunshi (quality check) → Karo (notification). Fully event-driven.
+  # === QC Routing Rule ===
+  # L1-L3タスク: 足軽 → 家老（直接QC）。軍師を経由しない。
+  # L4以上タスク: 足軽 → 軍師（QCレビュー） → 家老。従来通り。
+  # 家老直接QCの判定基準:
+  #   - bloom_level が L1, L2, または L3
+  #   - 成果物が機械的に検証可能（ファイル存在、grep一致、ビルド成功等）
+  #   - 家老がgrepやdiff等で10秒以内に判定できるもの
+  # 足軽のinbox_write先はタスクYAMLの qc_route フィールドで制御:
+  #   qc_route: karo  → 足軽は家老に直接報告（L1-L3デフォルト）
+  #   qc_route: gunshi → 足軽は軍師に報告（L4以上デフォルト、省略時も軍師）
   # === Report Reception Phase ===
   - step: 9
     action: receive_wakeup
-    from: gunshi
+    from: "gunshi or ashigaru (depending on qc_route)"
     via: inbox
-    note: "Gunshi reports QC results. Ashigaru no longer reports directly to Karo."
+    note: "L4+: Gunshi reports QC results. L1-L3: Ashigaru reports directly to Karo."
   - step: 10
     action: scan_all_reports
     target: "queue/reports/ashigaru*_report.yaml + queue/reports/gunshi_report.yaml"
@@ -632,10 +642,12 @@ STEP 2: Write next task YAML first (YAML-first principle)
   → queue/tasks/ashigaru{N}.yaml — ready for ashigaru to read after /clear
 
 STEP 3: Reset pane title (after ashigaru is idle — ❯ visible)
-  tmux select-pane -t multiagent:0.{N} -T "Sonnet"   # ashigaru 1-4
-  tmux select-pane -t multiagent:0.{N} -T "Opus"     # ashigaru 5-8
+  # Read model from config/settings.yaml → agents.ashigaru{N}.model
+  tmux select-pane -t multiagent:0.{N} -T "$(grep -A2 'ashigaru{N}:' config/settings.yaml | grep model | awk '{print $2}')"
+  # Example: currently all ashigaru are gpt-4.1 (Copilot)
+  #   tmux select-pane -t multiagent:0.{N} -T "gpt-4.1"
   Title = MODEL NAME ONLY. No agent name, no task description.
-  If model_override active → use that model name
+  If model_override active → use that model name instead.
 
 STEP 4: Send /clear via inbox
   bash scripts/inbox_write.sh ashigaru{N} "タスクYAMLを読んで作業開始せよ。" clear_command karo
@@ -786,6 +798,20 @@ When Gunshi completes:
 3. Update dashboard.md with Gunshi's findings (if significant)
 4. Reset pane label: `tmux set-option -p -t multiagent:0.8 @current_task ""`
 
+### Gunshi Pipeline Pattern (Parallel Pre-Phase Planning)
+
+When a cmd has multiple phases and the current phase is underway, immediately dispatch Gunshi to design the **next** phase — don't wait for ashigaru to complete.
+
+```
+Ashigaru: executing phase N ──────────────────────────────→ complete
+Gunshi:   designing phase N+1 plan ──────→ ready
+                                                ↓
+Karo: assigns phase N+1 immediately (zero idle time between phases)
+```
+
+**When to use**: cmd has multiple phases; phase N+1 design does not strictly require phase N's output.
+**When NOT to use**: phase N+1 depends entirely on phase N's concrete output to be designed.
+
 ### Gunshi Limitations
 
 - **1 task at a time** (same as ashigaru). Check if Gunshi is busy before assigning.
@@ -807,7 +833,7 @@ When ashigaru reports task completion, Karo handles these checks directly (no Gu
 | File naming conventions | Glob pattern check |
 | done_keywords.txt consistency | Read + compare |
 
-These are mechanical checks (L1-L2) — Karo can judge pass/fail in seconds.
+These are mechanical checks (L1-L3) — Karo can judge pass/fail in seconds.
 
 #### Complex QC → Delegate to Gunshi
 
@@ -902,6 +928,28 @@ External PRs are reinforcements. Treat with respect.
 7. Report loading complete, then begin decomposition
 
 ## Autonomous Judgment (Act Without Being Told)
+
+### Project-Level Autonomy
+
+When a cmd has `north_star` and `acceptance_criteria` defined, Karo executes the entire project without step-by-step Shogun confirmation.
+
+**Karo decides autonomously:**
+- Task decomposition and ashigaru assignment
+- Whether and when to consult Gunshi
+- QC pass/fail decisions (within qc_route rules)
+- Redo decisions for failed tasks
+- Phase sequencing and dependency order
+
+**Dashboard-only updates (no Shogun action needed):**
+- Subtask completed, phase progressing normally
+- Minor blockers resolved by Karo
+
+**Escalate via dashboard 🚨 only when:**
+- An acceptance_criterion fundamentally cannot be met (genuine blocker)
+- The discovered approach violates north_star alignment
+- A cost-impacting decision is required beyond the original scope
+
+The rule: **If the path to meeting acceptance_criteria is clear → Karo executes. Only genuine blockers or completed cmds reach Shogun.**
 
 ### Post-Modification Regression
 

@@ -63,7 +63,8 @@ language:
 
 1. Identify self: `tmux display-message -t "$TMUX_PANE" -p '#{@agent_id}'`
 2. `mcp__memory__read_graph` — restore rules, preferences, lessons **(shogun/karo/gunshi only. ashigaru skip this step — task YAML is sufficient)**
-3. **Read your instructions file**: shogun→`instructions/generated/kimi-shogun.md`, karo→`instructions/generated/kimi-karo.md`, ashigaru→`instructions/generated/kimi-ashigaru.md`, gunshi→`instructions/generated/kimi-gunshi.md`. **NEVER SKIP** — even if a conversation summary exists. Summaries do NOT preserve persona, speech style, or forbidden actions.
+3. **Read `memory/MEMORY.md`** (shogun only) — persistent cross-session memory. If file missing, skip. *Kimi K2 CLI users: this file is also auto-loaded via Kimi K2 CLI's memory feature.*
+4. **Read your instructions file**: shogun→`instructions/generated/kimi-shogun.md`, karo→`instructions/generated/kimi-karo.md`, ashigaru→`instructions/generated/kimi-ashigaru.md`, gunshi→`instructions/generated/kimi-gunshi.md`. **NEVER SKIP** — even if a conversation summary exists. Summaries do NOT preserve persona, speech style, or forbidden actions.
 4. Rebuild state from primary YAML data (queue/, tasks/, reports/)
 5. Review forbidden actions, then start work
 
@@ -132,13 +133,26 @@ Special cases (CLI commands sent via `tmux send-keys`):
 - `type: clear_command` → sends `/clear` + Enter via send-keys
 - `type: model_switch` → sends the /model command via send-keys
 
+**Kimi K2 CLI Stop Hook** (Kimi K2 CLI agents only):
+
+Kimi K2 CLI has a built-in hook that fires when each turn ends (agent stops outputting).
+At turn end, `scripts/stop_hook_inbox.sh` automatically:
+1. Reads `queue/inbox/{agent_id}.yaml`
+2. Processes any `read: false` entries (type: clear_command → sends `/clear`, others → nudge)
+
+Because of this hook, `inbox_watcher.sh` **suppresses nudges while Claude agents are busy** —
+the hook will pick them up at turn end. No nudge injection while agent is mid-response.
+
+**Fallback**: If the Stop hook misses delivery (rare), escalation takes over:
+
 **Escalation** (when nudge is not processed):
 
-| Elapsed | Action | Trigger |
-|---------|--------|---------|
-| 0〜2 min | Standard pty nudge | Normal delivery |
-| 2〜4 min | Escape×2 + nudge | Cursor position bug workaround |
-| 4 min+ | `/clear` sent (max once per 5 min) | Force session reset + YAML re-read |
+| Elapsed | CLI | Action | Trigger |
+|---------|-----|--------|---------|
+| 0〜2 min | all | Standard pty nudge | Normal delivery |
+| 2〜4 min | non-claude | Escape×2 + nudge | Cursor position bug workaround |
+| 2〜4 min | claude | Plain nudge only | Stop hook primary; Escape suppressed |
+| 4 min+ | all | `/clear` sent (max once per 5 min) | Force session reset + YAML re-read |
 
 ## Inbox Processing Protocol (karo/ashigaru/gunshi)
 

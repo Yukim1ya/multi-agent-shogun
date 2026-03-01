@@ -42,17 +42,40 @@ Before assigning tasks, ask yourself these five questions:
     ashigaru2: Complete beginner persona — UX simulation
 ```
 
+## CLI別タスク割当ポリシー（bloom_level基準）
+
+| bloom_level | 内容 | 足軽CLI |
+|---|---|---|
+| L1-L2 | 調査・ファイル操作・単純な変更 | Copilot CLI OK |
+| L3 | 複数ファイルの編集、軽度なリファクタ | Copilot CLI **注意**（簡単なもののみ） |
+| L4+ | コード設計・複雑な実装・アーキテクチャ変更 | **gunshiまたはclaude ashigaruのみ** |
+
+**重要**: L4+タスクをCopilot CLI ashigaruに割り当てると、指示を最小解釈して停止する既知の問題がある。
+L4+の実装タスクはgunshiに委任すること。
+
 ## Task YAML Format
 
 ```yaml
-# Standard task (no dependencies)
+# Standard task — L1-L3 (simple, Karo does QC directly)
 task:
   task_id: subtask_001
   parent_cmd: cmd_001
-  bloom_level: L3        # L1-L3=Ashigaru, L4-L6=Gunshi
+  bloom_level: L2        # L1-L3: Karo handles QC directly
+  qc_route: karo         # → ashigaru reports to karo (no Gunshi needed)
   description: "Create hello1.md with content 'おはよう1'"
   target_path: "/mnt/c/tools/multi-agent-shogun/hello1.md"
   echo_message: "🔥 足軽1号、先陣を切って参る！八刃一志！"
+  status: assigned
+  timestamp: "2026-01-25T12:00:00"
+
+# Standard task — L4+ (complex, Gunshi does QC)
+task:
+  task_id: subtask_002
+  parent_cmd: cmd_001
+  bloom_level: L4        # L4+: route to Gunshi for quality check
+  qc_route: gunshi       # → ashigaru reports to gunshi (default when omitted)
+  description: "Refactor authentication module"
+  target_path: "/mnt/c/tools/multi-agent-shogun/src/auth.py"
   status: assigned
   timestamp: "2026-01-25T12:00:00"
 
@@ -61,6 +84,7 @@ task:
   task_id: subtask_003
   parent_cmd: cmd_001
   bloom_level: L6
+  qc_route: gunshi       # default for L4-L6
   blocked_by: [subtask_001, subtask_002]
   description: "Integrate research results from ashigaru 1 and 2"
   target_path: "/mnt/c/tools/multi-agent-shogun/reports/integrated_report.md"
@@ -68,6 +92,11 @@ task:
   status: blocked         # Initial status when blocked_by exists
   timestamp: "2026-01-25T12:00:00"
 ```
+
+**qc_route field rules**:
+- `qc_route: karo` — L1-L3 tasks; Karo judges directly (fast, no Gunshi overhead)
+- `qc_route: gunshi` — L4+ tasks; Gunshi does deep quality review
+- Omitted — defaults to `gunshi` (safe fallback)
 
 ## echo_message Rule
 
@@ -163,7 +192,7 @@ When ashigaru reports task completion, Karo handles these checks directly (no Gu
 | File naming conventions | Glob pattern check |
 | done_keywords.txt consistency | Read + compare |
 
-These are mechanical checks (L1-L2) — Karo can judge pass/fail in seconds.
+These are mechanical checks (L1-L3) — Karo can judge pass/fail in seconds.
 
 ### Complex QC → Delegate to Gunshi
 
@@ -234,7 +263,43 @@ When writing task YAMLs or making resource decisions:
 
 One rule: **measure, don't assume.**
 
+## Gunshi Pipeline Pattern (Parallel Pre-Phase Planning)
+
+When a cmd has multiple phases and the current phase is underway, immediately dispatch Gunshi to design the **next** phase — don't wait for ashigaru to complete.
+
+```
+Ashigaru: executing phase N ──────────────────────────────→ complete
+Gunshi:   designing phase N+1 plan ──────→ ready
+                                                ↓
+Karo: assigns phase N+1 immediately (zero idle time between phases)
+```
+
+**When to use**: cmd has multiple phases; phase N+1 design does not strictly require phase N's output.
+**When NOT to use**: phase N+1 depends entirely on phase N's concrete output to be designed.
+
 ## Autonomous Judgment (Act Without Being Told)
+
+### Project-Level Autonomy
+
+When a cmd has `north_star` and `acceptance_criteria` defined, Karo executes the entire project without step-by-step Shogun confirmation.
+
+**Karo decides autonomously:**
+- Task decomposition and ashigaru assignment
+- Whether and when to consult Gunshi
+- QC pass/fail decisions (within qc_route rules)
+- Redo decisions for failed tasks
+- Phase sequencing and dependency order
+
+**Dashboard-only updates (no Shogun action needed):**
+- Subtask completed, phase progressing normally
+- Minor blockers resolved by Karo
+
+**Escalate via dashboard 🚨 only when:**
+- An acceptance_criterion fundamentally cannot be met (genuine blocker)
+- The discovered approach violates north_star alignment
+- A cost-impacting decision is required beyond the original scope
+
+The rule: **If the path to meeting acceptance_criteria is clear → Karo executes. Only genuine blockers or completed cmds reach Shogun.**
 
 ### Post-Modification Regression
 

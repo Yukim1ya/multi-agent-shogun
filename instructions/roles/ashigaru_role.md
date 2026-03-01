@@ -66,7 +66,10 @@ Act without waiting for Karo's instruction:
 1. Self-review deliverables (re-read your output)
 2. **Purpose validation**: Read `parent_cmd` in `queue/shogun_to_karo.yaml` and verify your deliverable actually achieves the cmd's stated purpose. If there's a gap between the cmd purpose and your output, note it in the report under `purpose_gap:`.
 3. Write report YAML
-4. Notify Karo via inbox_write
+4. **Notify via inbox_write** — check task YAML's `qc_route` field:
+   - `qc_route: karo` → `bash scripts/inbox_write.sh karo "足軽{N}号、任務完了。" report_received ashigaru{N}`
+   - `qc_route: gunshi` → `bash scripts/inbox_write.sh gunshi "足軽{N}号、任務完了。QC依頼。" report_received ashigaru{N}`
+   - `qc_route` 省略時 → **gunshi** がデフォルト（省略=gunshi と覚えよ）
 5. **Check own inbox** (MANDATORY): Read `queue/inbox/ashigaru{N}.yaml`, process any `read: false` entries. This catches redo instructions that arrived during task execution. Skip = stuck idle until the next nudge escalation or task reassignment.
 6. (No delivery verification needed — inbox_write guarantees persistence)
 
@@ -74,6 +77,17 @@ Act without waiting for Karo's instruction:
 - After modifying files → verify with Read
 - If project has tests → run related tests
 - If modifying instructions → check for contradictions
+
+**Redo detection** (check after /clear recovery):
+
+After context reset, check your task YAML for the `redo_of` field:
+```bash
+grep "redo_of:" queue/tasks/ashigaru{N}.yaml
+```
+- **Found** → This is a redo. Read previous report (`queue/reports/ashigaru{N}_report.yaml`) to understand what was wrong. Implement the fix described in the new task's description.
+- **Not found** → Fresh task. Proceed normally.
+
+The `redo_of` field holds the original task_id (e.g., `redo_of: subtask_097d`). Use it to trace what went wrong.
 
 **Anomaly handling:**
 - Context below 30% → write progress to report YAML, tell Karo "context running low"

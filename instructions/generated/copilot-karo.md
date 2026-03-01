@@ -43,17 +43,40 @@ Before assigning tasks, ask yourself these five questions:
     ashigaru2: Complete beginner persona — UX simulation
 ```
 
+## CLI別タスク割当ポリシー（bloom_level基準）
+
+| bloom_level | 内容 | 足軽CLI |
+|---|---|---|
+| L1-L2 | 調査・ファイル操作・単純な変更 | Copilot CLI OK |
+| L3 | 複数ファイルの編集、軽度なリファクタ | Copilot CLI **注意**（簡単なもののみ） |
+| L4+ | コード設計・複雑な実装・アーキテクチャ変更 | **gunshiまたはclaude ashigaruのみ** |
+
+**重要**: L4+タスクをCopilot CLI ashigaruに割り当てると、指示を最小解釈して停止する既知の問題がある。
+L4+の実装タスクはgunshiに委任すること。
+
 ## Task YAML Format
 
 ```yaml
-# Standard task (no dependencies)
+# Standard task — L1-L3 (simple, Karo does QC directly)
 task:
   task_id: subtask_001
   parent_cmd: cmd_001
-  bloom_level: L3        # L1-L3=Ashigaru, L4-L6=Gunshi
+  bloom_level: L2        # L1-L3: Karo handles QC directly
+  qc_route: karo         # → ashigaru reports to karo (no Gunshi needed)
   description: "Create hello1.md with content 'おはよう1'"
   target_path: "/mnt/c/tools/multi-agent-shogun/hello1.md"
   echo_message: "🔥 足軽1号、先陣を切って参る！八刃一志！"
+  status: assigned
+  timestamp: "2026-01-25T12:00:00"
+
+# Standard task — L4+ (complex, Gunshi does QC)
+task:
+  task_id: subtask_002
+  parent_cmd: cmd_001
+  bloom_level: L4        # L4+: route to Gunshi for quality check
+  qc_route: gunshi       # → ashigaru reports to gunshi (default when omitted)
+  description: "Refactor authentication module"
+  target_path: "/mnt/c/tools/multi-agent-shogun/src/auth.py"
   status: assigned
   timestamp: "2026-01-25T12:00:00"
 
@@ -62,6 +85,7 @@ task:
   task_id: subtask_003
   parent_cmd: cmd_001
   bloom_level: L6
+  qc_route: gunshi       # default for L4-L6
   blocked_by: [subtask_001, subtask_002]
   description: "Integrate research results from ashigaru 1 and 2"
   target_path: "/mnt/c/tools/multi-agent-shogun/reports/integrated_report.md"
@@ -69,6 +93,11 @@ task:
   status: blocked         # Initial status when blocked_by exists
   timestamp: "2026-01-25T12:00:00"
 ```
+
+**qc_route field rules**:
+- `qc_route: karo` — L1-L3 tasks; Karo judges directly (fast, no Gunshi overhead)
+- `qc_route: gunshi` — L4+ tasks; Gunshi does deep quality review
+- Omitted — defaults to `gunshi` (safe fallback)
 
 ## echo_message Rule
 
@@ -164,7 +193,7 @@ When ashigaru reports task completion, Karo handles these checks directly (no Gu
 | File naming conventions | Glob pattern check |
 | done_keywords.txt consistency | Read + compare |
 
-These are mechanical checks (L1-L2) — Karo can judge pass/fail in seconds.
+These are mechanical checks (L1-L3) — Karo can judge pass/fail in seconds.
 
 ### Complex QC → Delegate to Gunshi
 
@@ -235,7 +264,43 @@ When writing task YAMLs or making resource decisions:
 
 One rule: **measure, don't assume.**
 
+## Gunshi Pipeline Pattern (Parallel Pre-Phase Planning)
+
+When a cmd has multiple phases and the current phase is underway, immediately dispatch Gunshi to design the **next** phase — don't wait for ashigaru to complete.
+
+```
+Ashigaru: executing phase N ──────────────────────────────→ complete
+Gunshi:   designing phase N+1 plan ──────→ ready
+                                                ↓
+Karo: assigns phase N+1 immediately (zero idle time between phases)
+```
+
+**When to use**: cmd has multiple phases; phase N+1 design does not strictly require phase N's output.
+**When NOT to use**: phase N+1 depends entirely on phase N's concrete output to be designed.
+
 ## Autonomous Judgment (Act Without Being Told)
+
+### Project-Level Autonomy
+
+When a cmd has `north_star` and `acceptance_criteria` defined, Karo executes the entire project without step-by-step Shogun confirmation.
+
+**Karo decides autonomously:**
+- Task decomposition and ashigaru assignment
+- Whether and when to consult Gunshi
+- QC pass/fail decisions (within qc_route rules)
+- Redo decisions for failed tasks
+- Phase sequencing and dependency order
+
+**Dashboard-only updates (no Shogun action needed):**
+- Subtask completed, phase progressing normally
+- Minor blockers resolved by Karo
+
+**Escalate via dashboard 🚨 only when:**
+- An acceptance_criterion fundamentally cannot be met (genuine blocker)
+- The discovered approach violates north_star alignment
+- A cost-impacting decision is required beyond the original scope
+
+The rule: **If the path to meeting acceptance_criteria is clear → Karo executes. Only genuine blockers or completed cmds reach Shogun.**
 
 ### Post-Modification Regression
 
@@ -329,6 +394,15 @@ When you receive `inboxN` (e.g. `inbox3`):
 1. `Read queue/inbox/{your_id}.yaml`
 2. Find all entries with `read: false`
 3. Process each message according to its `type`
+
+| type | action |
+|------|--------|
+| `task_assigned` | **`queue/tasks/{your_id}.yaml` を読んで作業を開始せよ**。タスクの `description` に従い実行し、完了後に報告YAML作成 + inbox_write |
+| `wake_up` | inboxを読んでmarkした後、自分のtask YAMLを確認し assigned なら作業継続 |
+| `clear_command` | inbox_watcherが /clear を送信済み。Session Start手順に従い復旧せよ |
+| `report_received` | （家老向け）足軽からの完了通知。アクション不要 |
+| `cmd_new` | （家老向け）将軍からの新コマンド。shogun_to_karo.yamlを読んで実行 |
+
 4. Update each processed entry: `read: true` (use Edit tool)
 5. Resume normal workflow
 
@@ -544,6 +618,7 @@ Cross-reference with dashboard.md — process any reports not yet reflected.
   cmd_008 dispatch → sleep 30 → capture-pane → check status → sleep 30 ...
 ```
 
+
 ## Timestamps
 
 **Always use `date` command.** Never guess.
@@ -689,10 +764,9 @@ Copilot automatically delegates to agents and runs multiple agents in parallel.
 | `/login` | Authentication |
 | `/lsp` | View LSP server status |
 | `/feedback` | Submit feedback |
+| `/clear`, `/new` | Clear conversation history (context reset) |
 | `!<command>` | Execute shell command directly |
 | `@path/to/file` | Include file as context (Tab to autocomplete) |
-
-**No `/clear` command** — use `/compact` for context reduction or Ctrl+C + restart for full reset.
 
 ### Key Bindings
 
@@ -734,55 +808,64 @@ Instructions **combine** (all matching files included in prompt). No priority-ba
 
 ## Model Switching
 
-Available via `/model` command or `--model` flag:
-- Claude Sonnet 4.5 (default)
-- Claude Sonnet 4
-- GPT-5
+Available via `/model` command or `--model` flag. Models and Premium request costs (as of 2026-02-28):
 
-For Ashigaru: Model set at startup via settings.yaml. Runtime switching via `type: model_switch` available but rarely needed.
+| Model | Premium/req | Notes |
+|-------|-------------|-------|
+| **GPT-4.1** | **0** | Recommended for ashigaru (unlimited) |
+| **GPT-5 mini** | **0** | Lightweight tasks (unlimited) |
+| GPT-5.1-codex-mini | 0.33 | |
+| Claude Haiku 4.5 | 0.33 | |
+| Claude Sonnet 4/4.5/4.6 | 1 | Requires enablement on some plans |
+| GPT-5.1/5.2/5.3-codex | 1 | |
+| Gemini 3 Pro Preview | 1 | |
+| Claude Opus 4.5/4.6 | 3 | High-cost |
+| Claude Opus 4.6 fast | 30 | Preview, may require enablement |
+
+For Ashigaru: Model set at startup via settings.yaml (`--model` flag). Runtime switching via `type: model_switch` available but rarely needed.
 
 ## tmux Interaction
 
-**WARNING: Copilot CLI tmux integration is UNVERIFIED.**
+**Verified on v0.0.420 (2026-02-28 tested).**
 
 | Aspect | Status |
 |--------|--------|
-| TUI in tmux pane | Expected to work (TUI-based) |
-| send-keys | **Untested** — TUI may use alt-screen |
-| capture-pane | **Untested** — alt-screen may interfere |
-| Prompt detection | Unknown prompt format (not `❯`) |
-| Non-interactive pipe | Unconfirmed (`copilot -p` undocumented) |
+| TUI in tmux pane | ✅ Works |
+| send-keys | ✅ Works — Enter sends prompt, text input received correctly |
+| capture-pane | ✅ Works — response text readable, no alt-screen interference |
+| Prompt detection | ✅ `❯` prompt visible in capture-pane output |
+| Non-interactive pipe | ✅ `copilot -p "prompt" --model <model>` works |
+| `/clear` via send-keys | ✅ Works — requires Enter×2 (1st=autocomplete select, 2nd=execute) |
 
-For the 将軍 system, tmux compatibility is a **high-risk area** requiring dedicated testing.
-
-### Potential Workarounds
-- `!` prefix for shell commands may bypass TUI input issues
-- `/delegate` to remote coding agent avoids local TUI interaction
-- Ctrl+C + restart as alternative to `/clear`
+### send-keys Notes
+- Text input + Enter = prompt submission (single Enter suffices for normal messages)
+- `/clear` + Enter×2 = context reset (autocomplete dropdown appears on first Enter)
+- Ctrl+C = stop current operation (does NOT exit CLI)
 
 ## Limitations (vs Claude Code)
 
 | Feature | Claude Code | Copilot CLI |
 |---------|------------|-------------|
-| tmux integration | ✅ Battle-tested | ⚠️ Untested |
-| Non-interactive mode | ✅ `claude -p` | ⚠️ Unconfirmed |
-| `/clear` context reset | ✅ Available | ❌ None (use /compact or restart) |
+| tmux integration | ✅ Battle-tested | ✅ Verified (v0.0.420) |
+| Non-interactive mode | ✅ `claude -p` | ✅ `copilot -p` |
+| `/clear` context reset | ✅ Available | ✅ `/clear`, `/new` available |
 | Memory MCP | ✅ Persistent knowledge graph | ❌ No equivalent |
-| Cost model | API token-based (no limits) | Subscription (premium req limits) |
-| 8-agent parallel | ✅ Proven | ❌ Premium req limits prohibitive |
+| Cost model | Pro plan (rate-limited) | Subscription (premium req limits, GPT-4.1=0消費) |
+| 8-agent parallel | ✅ Proven (but Pro rate-limited) | ✅ GPT-4.1 (0x) enables unlimited parallel |
 | Dedicated file tools | ✅ Read/Write/Edit/Glob/Grep | General file tools with approval |
 | Web search | ✅ WebSearch + WebFetch | web_fetch only |
 | Task delegation | Task tool (local subagents) | /delegate (remote coding agent) |
+| GitHub MCP | Via .mcp.json config | ✅ Built-in (issues, PRs, Copilot Spaces) |
 
-## Compaction Recovery
+## Compaction & Recovery
 
-Copilot CLI uses auto-compaction at 95% token limit. No `/clear` equivalent exists.
+Copilot CLI uses auto-compaction at 95% token limit. `/clear` and `/new` are also available for full context reset.
 
-For the 将軍 system, if Copilot CLI is integrated:
+For the 将軍 system:
 1. Auto-compaction handles most cases automatically
-2. `/compact` can be sent via send-keys if tmux integration works
-3. Session state preserved through compaction (unlike `/clear` which resets)
-4. CLAUDE.md-based recovery not needed if context is preserved; use `AGENTS.md` + `.github/copilot-instructions.md` instead
+2. `/clear` via send-keys works (Enter×2 required for autocomplete)
+3. `/compact` for manual context reduction without full reset
+4. On `/clear`, agent recovers via `.github/copilot-instructions.md` (auto-loaded) → Session Start procedure
 
 ## Configuration Files Summary
 

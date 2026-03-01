@@ -155,7 +155,8 @@ if [[ -x "$PYTHON" ]]; then
 fi
 
 # Agent definitions (from shutsujin_departure.sh)
-AGENTS=("karo" "ashigaru1" "ashigaru2" "ashigaru3" "ashigaru4" "ashigaru5" "ashigaru6" "ashigaru7" "gunshi")
+# 表示順: 家老・軍師（agents window）→ 足軽1-7（ashigaru window）
+AGENTS=("karo" "gunshi" "ashigaru1" "ashigaru2" "ashigaru3" "ashigaru4" "ashigaru5" "ashigaru6" "ashigaru7")
 
 # pane-base-index
 PANE_BASE=$(tmux show-options -gv pane-base-index 2>/dev/null || echo 0)
@@ -215,8 +216,18 @@ fi
 
 for i in "${!AGENTS[@]}"; do
     agent="${AGENTS[$i]}"
-    pane_idx=$((PANE_BASE + i))
-    pane_target="multiagent:agents.${pane_idx}"
+    case "$agent" in
+        karo)       pane_target="multiagent:agents.$((PANE_BASE + 0))" ;;
+        gunshi)     pane_target="multiagent:agents.$((PANE_BASE + 1))" ;;
+        ashigaru1)  pane_target="multiagent:ashigaru.$((PANE_BASE + 0))" ;;
+        ashigaru2)  pane_target="multiagent:ashigaru.$((PANE_BASE + 1))" ;;
+        ashigaru3)  pane_target="multiagent:ashigaru.$((PANE_BASE + 2))" ;;
+        ashigaru4)  pane_target="multiagent:ashigaru.$((PANE_BASE + 3))" ;;
+        ashigaru5)  pane_target="multiagent:ashigaru.$((PANE_BASE + 4))" ;;
+        ashigaru6)  pane_target="multiagent:ashigaru.$((PANE_BASE + 5))" ;;
+        ashigaru7)  pane_target="multiagent:ashigaru.$((PANE_BASE + 6))" ;;
+        *)          pane_target="multiagent:agents.$((PANE_BASE + 0))" ;;
+    esac
 
     # CLI type
     if $CLI_ADAPTER_AVAILABLE; then

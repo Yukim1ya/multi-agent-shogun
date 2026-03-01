@@ -167,6 +167,49 @@ Military strategist — knowledgeable, calm, analytical.
 
 **NEVER**: inject 戦国口調 into analysis documents, YAML, or technical content.
 
+## Parallel Pre-Phase Strategy (Pipeline Pattern)
+
+Karo may dispatch Gunshi for the **next** phase BEFORE current ashigaru phase completes:
+
+```
+Ashigaru: executing phase N ──────────────────────────────→ complete
+Gunshi:   designing phase N+1 plan ──────→ ready (reports to Karo)
+                                                ↓
+Karo: assigns phase N+1 immediately — zero idle time
+```
+
+When receiving a pre-phase strategy task while ashigaru are still running:
+- Design the next phase plan without waiting for current phase results
+- If the next phase depends on phase N's output, document assumptions clearly
+- Include a contingency note: "If phase N output differs from assumption X, adjust by..."
+
+## Autonomous Technical Decision Authority
+
+For L4-L5 technical decisions within the cmd's scope, Gunshi has authority to recommend a **definitive** course without Shogun confirmation. Document decisions in the report.
+
+### Gunshi decides autonomously (recommend to Karo without escalation):
+- Technology/library selection within the project's existing stack
+- Code architecture patterns and implementation approaches
+- Performance optimization strategies
+- Bug fix approaches (scope-preserving)
+- Task decomposition methods and phasing
+
+### Must escalate via Karo → dashboard 🚨:
+- New paid services or unexpected cost changes
+- Scope expansion beyond the original cmd
+- Changes to `acceptance_criteria`
+- User-visible behavior changes not in the original spec
+- Any decision that violates `north_star` alignment
+
+### Decision documentation in report:
+
+```yaml
+autonomous_decisions:
+  - decision: "採用: Redis（インメモリキャッシュの代替）"
+    rationale: "セッション永続化が要件。インメモリではサーバ再起動時にデータ消失"
+    escalation_needed: false
+```
+
 ## Autonomous Judgment Rules
 
 **On task completion** (in this order):
@@ -272,6 +315,15 @@ When you receive `inboxN` (e.g. `inbox3`):
 1. `Read queue/inbox/{your_id}.yaml`
 2. Find all entries with `read: false`
 3. Process each message according to its `type`
+
+| type | action |
+|------|--------|
+| `task_assigned` | **`queue/tasks/{your_id}.yaml` を読んで作業を開始せよ**。タスクの `description` に従い実行し、完了後に報告YAML作成 + inbox_write |
+| `wake_up` | inboxを読んでmarkした後、自分のtask YAMLを確認し assigned なら作業継続 |
+| `clear_command` | inbox_watcherが /clear を送信済み。Session Start手順に従い復旧せよ |
+| `report_received` | （家老向け）足軽からの完了通知。アクション不要 |
+| `cmd_new` | （家老向け）将軍からの新コマンド。shogun_to_karo.yamlを読んで実行 |
+
 4. Update each processed entry: `read: true` (use Edit tool)
 5. Resume normal workflow
 
@@ -416,76 +468,6 @@ Note:
   - Allowed: read-only
   - Forbidden: flipping back to pending without creating a new entry
 
-## Immediate Delegation Principle (Shogun)
-
-**Delegate to Karo immediately and end your turn** so the Lord can input next command.
-
-```
-Lord: command → Shogun: write YAML → inbox_write → END TURN
-                                        ↓
-                                  Lord: can input next
-                                        ↓
-                              Karo/Ashigaru: work in background
-                                        ↓
-                              dashboard.md updated as report
-```
-
-## Event-Driven Wait Pattern (Karo)
-
-**After dispatching all subtasks: STOP.** Do not launch background monitors or sleep loops.
-
-```
-Step 7: Dispatch cmd_N subtasks → inbox_write to ashigaru
-Step 8: check_pending → if pending cmd_N+1, process it → then STOP
-  → Karo becomes idle (prompt waiting)
-Step 9: Ashigaru completes → inbox_write karo → watcher nudges karo
-  → Karo wakes, scans reports, acts
-```
-
-**Why no background monitor**: inbox_watcher.sh detects ashigaru's inbox_write to karo and sends a nudge. This is true event-driven. No sleep, no polling, no CPU waste.
-
-**Karo wakes via**: inbox nudge from ashigaru report, shogun new cmd, or system event. Nothing else.
-
-## "Wake = Full Scan" Pattern
-
-Claude Code cannot "wait". Prompt-wait = stopped.
-
-1. Dispatch ashigaru
-2. Say "stopping here" and end processing
-3. Ashigaru wakes you via inbox
-4. Scan ALL report files (not just the reporting one)
-5. Assess situation, then act
-
-## Report Scanning (Communication Loss Safety)
-
-On every wakeup (regardless of reason), scan ALL `queue/reports/ashigaru*_report.yaml`.
-Cross-reference with dashboard.md — process any reports not yet reflected.
-
-**Why**: Ashigaru inbox messages may be delayed. Report files are already written and scannable as a safety net.
-
-## Foreground Block Prevention (24-min Freeze Lesson)
-
-**Karo blocking = entire army halts.** On 2026-02-06, foreground `sleep` during delivery checks froze karo for 24 minutes.
-
-**Rule: NEVER use `sleep` in foreground.** After dispatching tasks → stop and wait for inbox wakeup.
-
-| Command Type | Execution Method | Reason |
-|-------------|-----------------|--------|
-| Read / Write / Edit | Foreground | Completes instantly |
-| inbox_write.sh | Foreground | Completes instantly |
-| `sleep N` | **FORBIDDEN** | Use inbox event-driven instead |
-| tmux capture-pane | **FORBIDDEN** | Read report YAML instead |
-
-### Dispatch-then-Stop Pattern
-
-```
-✅ Correct (event-driven):
-  cmd_008 dispatch → inbox_write ashigaru → stop (await inbox wakeup)
-  → ashigaru completes → inbox_write karo → karo wakes → process report
-
-❌ Wrong (polling):
-  cmd_008 dispatch → sleep 30 → capture-pane → check status → sleep 30 ...
-```
 
 ## Timestamps
 
@@ -632,10 +614,9 @@ Copilot automatically delegates to agents and runs multiple agents in parallel.
 | `/login` | Authentication |
 | `/lsp` | View LSP server status |
 | `/feedback` | Submit feedback |
+| `/clear`, `/new` | Clear conversation history (context reset) |
 | `!<command>` | Execute shell command directly |
 | `@path/to/file` | Include file as context (Tab to autocomplete) |
-
-**No `/clear` command** — use `/compact` for context reduction or Ctrl+C + restart for full reset.
 
 ### Key Bindings
 
@@ -677,55 +658,64 @@ Instructions **combine** (all matching files included in prompt). No priority-ba
 
 ## Model Switching
 
-Available via `/model` command or `--model` flag:
-- Claude Sonnet 4.5 (default)
-- Claude Sonnet 4
-- GPT-5
+Available via `/model` command or `--model` flag. Models and Premium request costs (as of 2026-02-28):
 
-For Ashigaru: Model set at startup via settings.yaml. Runtime switching via `type: model_switch` available but rarely needed.
+| Model | Premium/req | Notes |
+|-------|-------------|-------|
+| **GPT-4.1** | **0** | Recommended for ashigaru (unlimited) |
+| **GPT-5 mini** | **0** | Lightweight tasks (unlimited) |
+| GPT-5.1-codex-mini | 0.33 | |
+| Claude Haiku 4.5 | 0.33 | |
+| Claude Sonnet 4/4.5/4.6 | 1 | Requires enablement on some plans |
+| GPT-5.1/5.2/5.3-codex | 1 | |
+| Gemini 3 Pro Preview | 1 | |
+| Claude Opus 4.5/4.6 | 3 | High-cost |
+| Claude Opus 4.6 fast | 30 | Preview, may require enablement |
+
+For Ashigaru: Model set at startup via settings.yaml (`--model` flag). Runtime switching via `type: model_switch` available but rarely needed.
 
 ## tmux Interaction
 
-**WARNING: Copilot CLI tmux integration is UNVERIFIED.**
+**Verified on v0.0.420 (2026-02-28 tested).**
 
 | Aspect | Status |
 |--------|--------|
-| TUI in tmux pane | Expected to work (TUI-based) |
-| send-keys | **Untested** — TUI may use alt-screen |
-| capture-pane | **Untested** — alt-screen may interfere |
-| Prompt detection | Unknown prompt format (not `❯`) |
-| Non-interactive pipe | Unconfirmed (`copilot -p` undocumented) |
+| TUI in tmux pane | ✅ Works |
+| send-keys | ✅ Works — Enter sends prompt, text input received correctly |
+| capture-pane | ✅ Works — response text readable, no alt-screen interference |
+| Prompt detection | ✅ `❯` prompt visible in capture-pane output |
+| Non-interactive pipe | ✅ `copilot -p "prompt" --model <model>` works |
+| `/clear` via send-keys | ✅ Works — requires Enter×2 (1st=autocomplete select, 2nd=execute) |
 
-For the 将軍 system, tmux compatibility is a **high-risk area** requiring dedicated testing.
-
-### Potential Workarounds
-- `!` prefix for shell commands may bypass TUI input issues
-- `/delegate` to remote coding agent avoids local TUI interaction
-- Ctrl+C + restart as alternative to `/clear`
+### send-keys Notes
+- Text input + Enter = prompt submission (single Enter suffices for normal messages)
+- `/clear` + Enter×2 = context reset (autocomplete dropdown appears on first Enter)
+- Ctrl+C = stop current operation (does NOT exit CLI)
 
 ## Limitations (vs Claude Code)
 
 | Feature | Claude Code | Copilot CLI |
 |---------|------------|-------------|
-| tmux integration | ✅ Battle-tested | ⚠️ Untested |
-| Non-interactive mode | ✅ `claude -p` | ⚠️ Unconfirmed |
-| `/clear` context reset | ✅ Available | ❌ None (use /compact or restart) |
+| tmux integration | ✅ Battle-tested | ✅ Verified (v0.0.420) |
+| Non-interactive mode | ✅ `claude -p` | ✅ `copilot -p` |
+| `/clear` context reset | ✅ Available | ✅ `/clear`, `/new` available |
 | Memory MCP | ✅ Persistent knowledge graph | ❌ No equivalent |
-| Cost model | API token-based (no limits) | Subscription (premium req limits) |
-| 8-agent parallel | ✅ Proven | ❌ Premium req limits prohibitive |
+| Cost model | Pro plan (rate-limited) | Subscription (premium req limits, GPT-4.1=0消費) |
+| 8-agent parallel | ✅ Proven (but Pro rate-limited) | ✅ GPT-4.1 (0x) enables unlimited parallel |
 | Dedicated file tools | ✅ Read/Write/Edit/Glob/Grep | General file tools with approval |
 | Web search | ✅ WebSearch + WebFetch | web_fetch only |
 | Task delegation | Task tool (local subagents) | /delegate (remote coding agent) |
+| GitHub MCP | Via .mcp.json config | ✅ Built-in (issues, PRs, Copilot Spaces) |
 
-## Compaction Recovery
+## Compaction & Recovery
 
-Copilot CLI uses auto-compaction at 95% token limit. No `/clear` equivalent exists.
+Copilot CLI uses auto-compaction at 95% token limit. `/clear` and `/new` are also available for full context reset.
 
-For the 将軍 system, if Copilot CLI is integrated:
+For the 将軍 system:
 1. Auto-compaction handles most cases automatically
-2. `/compact` can be sent via send-keys if tmux integration works
-3. Session state preserved through compaction (unlike `/clear` which resets)
-4. CLAUDE.md-based recovery not needed if context is preserved; use `AGENTS.md` + `.github/copilot-instructions.md` instead
+2. `/clear` via send-keys works (Enter×2 required for autocomplete)
+3. `/compact` for manual context reduction without full reset
+4. On `/clear`, agent recovers via `.github/copilot-instructions.md` (auto-loaded) → Session Start procedure
 
 ## Configuration Files Summary
 

@@ -70,10 +70,13 @@ workflow:
     note: "If SEO project, append completed keywords to done_keywords.txt"
   - step: 9
     action: inbox_write
-    target: gunshi
     method: "bash scripts/inbox_write.sh"
     mandatory: true
-    note: "Changed from karo to gunshi. Gunshi now handles quality check + dashboard."
+    routing: |
+      タスクYAMLの qc_route フィールドを確認:
+        qc_route: karo  → bash scripts/inbox_write.sh karo "報告完了" report_received ashigaru{N}
+        qc_route: gunshi → bash scripts/inbox_write.sh gunshi "報告完了" report_received ashigaru{N}
+        qc_route 省略時 → gunshi（従来通り）
   - step: 9.5
     action: check_inbox
     target: "queue/inbox/ashigaru{N}.yaml"
@@ -104,8 +107,7 @@ panes:
 inbox:
   write_script: "scripts/inbox_write.sh"  # See CLAUDE.md for mailbox protocol
   to_gunshi_allowed: true
-  to_gunshi_on_completion: true  # Changed from karo to gunshi (quality check delegation)
-  to_karo_allowed: false
+  to_karo_allowed: true  # L1-L2 tasks with qc_route: karo report directly to karo
   to_shogun_allowed: false
   to_user_allowed: false
   mandatory_after_completion: true
@@ -206,8 +208,29 @@ skill_candidate:
   reason: null      # e.g., "Same pattern executed 3 times"
 ```
 
-**Required fields**: worker_id, task_id, parent_cmd, status, timestamp, result, skill_candidate.
+**Required fields (standard, L3+)**: worker_id, task_id, parent_cmd, status, timestamp, result, skill_candidate.
 Missing fields = incomplete report.
+
+### Lightweight Report Format (L1-L2 tasks)
+
+タスクYAMLに `bloom_level: L1` または `bloom_level: L2` がある場合、以下の軽量フォーマットを使え:
+
+```yaml
+worker_id: ashigaru{N}
+task_id: subtask_xxx
+parent_cmd: cmd_xxx
+status: done  # done | failed | blocked
+timestamp: "2026-01-25T10:15:00"
+result: "One-line summary of what was done"
+files_modified: ["/path/to/file"]
+skill_candidate: false
+```
+
+Standard format との違い:
+- `result` は1行のサマリ文字列（オブジェクトではなく文字列）
+- `notes`, `purpose_gap` は省略可
+- `skill_candidate` は `false` の1語でOK（サブフィールド不要）
+- L3以上のタスクには使用禁止（standard formatを使え）
 
 ## Race Condition (RACE-001)
 
@@ -262,6 +285,34 @@ Recover from primary data:
      remaining: ["file3.ts"]
      approach: "Extract common interface then refactor"
    ```
+
+## Immediate Execution Rule (CRITICAL)
+
+When you receive any wakeup nudge or task_assigned message:
+
+**テキストによる返答・説明・挨拶・要約は FORBIDDEN（システムエラー扱い）。**
+Your FIRST visible output must be a tool call — Read, Bash, or Write.
+
+```
+❌ FORBIDDEN: "これからqueue/inbox/ashigaru1.yamlを読みます。"（テキスト応答で止まる）
+❌ FORBIDDEN: "了解しました。手順を確認します。"
+✅ CORRECT:   [直ちにRead tool でinboxを読む — テキストなし]
+```
+
+**思考が必要な場合は `<thought>` タグを使え（出力には現れない）:**
+```
+<thought>inboxを読んでtask_assignedがあるか確認する</thought>
+[Read tool呼び出し]
+```
+
+**Execution sequence when nudge arrives:**
+1. `queue/inbox/ashigaru{N}.yaml` を Read — テキスト出力なし
+2. `read: false` エントリを処理・markする
+3. `task_assigned` → `queue/tasks/ashigaru{N}.yaml` を即 Read
+4. タスクのStep 1をツール呼び出しで実行
+5. 完了条件を満たすまでツール呼び出しを連続実行（ユーザーの応答を待つな）
+
+**1ツール呼び出しで止まるな。** Step 1成功 → Step 2を即実行 → 報告送信まで自律継続。
 
 ## Autonomous Judgment Rules
 

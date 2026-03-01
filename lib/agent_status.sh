@@ -71,6 +71,10 @@ agent_is_busy_check() {
     if echo "$pane_tail" | grep -qE '(\? for shortcuts|context left)'; then
         return 1
     fi
+    # Copilot CLI idle prompt (shows "shift+tab switch mode" or "Remaining reqs" at bottom)
+    if echo "$pane_tail" | grep -qiE '(shift\+tab switch mode|Remaining reqs)'; then
+        return 1
+    fi
     # Claude Code bare prompt
     if echo "$pane_tail" | grep -qE '^(❯|›)\s*$'; then
         return 1

@@ -48,7 +48,7 @@ log() {
 usage() {
     echo "Usage: $0 <agent_id> [--type <cli_type>] [--model <model_name>]"
     echo ""
-    echo "  agent_id   karo, ashigaru1-7, gunshi"
+    echo "  agent_id   shogun, karo, ashigaru1-7, gunshi"
     echo "  --type     claude | codex | copilot | kimi"
     echo "  --model    claude-sonnet-4-6 | claude-opus-4-6 | gpt-5.3-codex | etc."
     echo ""
@@ -65,15 +65,16 @@ resolve_pane() {
     pane_base=$(tmux show-options -t multiagent -v @pane_base 2>/dev/null || echo "0")
 
     case "$agent_id" in
+        shogun)     echo "shogun:0.0" ;;
         karo)       echo "multiagent:agents.$((pane_base + 0))" ;;
-        ashigaru1)  echo "multiagent:agents.$((pane_base + 1))" ;;
-        ashigaru2)  echo "multiagent:agents.$((pane_base + 2))" ;;
-        ashigaru3)  echo "multiagent:agents.$((pane_base + 3))" ;;
-        ashigaru4)  echo "multiagent:agents.$((pane_base + 4))" ;;
-        ashigaru5)  echo "multiagent:agents.$((pane_base + 5))" ;;
-        ashigaru6)  echo "multiagent:agents.$((pane_base + 6))" ;;
-        ashigaru7)  echo "multiagent:agents.$((pane_base + 7))" ;;
-        gunshi)     echo "multiagent:agents.$((pane_base + 8))" ;;
+        gunshi)     echo "multiagent:agents.$((pane_base + 1))" ;;
+        ashigaru1)  echo "multiagent:ashigaru.$((pane_base + 0))" ;;
+        ashigaru2)  echo "multiagent:ashigaru.$((pane_base + 1))" ;;
+        ashigaru3)  echo "multiagent:ashigaru.$((pane_base + 2))" ;;
+        ashigaru4)  echo "multiagent:ashigaru.$((pane_base + 3))" ;;
+        ashigaru5)  echo "multiagent:ashigaru.$((pane_base + 4))" ;;
+        ashigaru6)  echo "multiagent:ashigaru.$((pane_base + 5))" ;;
+        ashigaru7)  echo "multiagent:ashigaru.$((pane_base + 6))" ;;
         *)
             log "ERROR: Unknown agent_id: $agent_id"
             return 1

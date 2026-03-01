@@ -240,6 +240,15 @@ When you receive `inboxN` (e.g. `inbox3`):
 1. `Read queue/inbox/{your_id}.yaml`
 2. Find all entries with `read: false`
 3. Process each message according to its `type`
+
+| type | action |
+|------|--------|
+| `task_assigned` | **`queue/tasks/{your_id}.yaml` を読んで作業を開始せよ**。タスクの `description` に従い実行し、完了後に報告YAML作成 + inbox_write |
+| `wake_up` | inboxを読んでmarkした後、自分のtask YAMLを確認し assigned なら作業継続 |
+| `clear_command` | inbox_watcherが /clear を送信済み。Session Start手順に従い復旧せよ |
+| `report_received` | （家老向け）足軽からの完了通知。アクション不要 |
+| `cmd_new` | （家老向け）将軍からの新コマンド。shogun_to_karo.yamlを読んで実行 |
+
 4. Update each processed entry: `read: true` (use Edit tool)
 5. Resume normal workflow
 
@@ -454,6 +463,7 @@ Cross-reference with dashboard.md — process any reports not yet reflected.
 ❌ Wrong (polling):
   cmd_008 dispatch → sleep 30 → capture-pane → check status → sleep 30 ...
 ```
+
 
 ## Timestamps
 

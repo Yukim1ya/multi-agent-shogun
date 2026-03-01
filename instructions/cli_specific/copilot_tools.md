@@ -65,10 +65,9 @@ Copilot automatically delegates to agents and runs multiple agents in parallel.
 | `/login` | Authentication |
 | `/lsp` | View LSP server status |
 | `/feedback` | Submit feedback |
+| `/clear`, `/new` | Clear conversation history (context reset) |
 | `!<command>` | Execute shell command directly |
 | `@path/to/file` | Include file as context (Tab to autocomplete) |
-
-**No `/clear` command** — use `/compact` for context reduction or Ctrl+C + restart for full reset.
 
 ### Key Bindings
 
@@ -110,55 +109,64 @@ Instructions **combine** (all matching files included in prompt). No priority-ba
 
 ## Model Switching
 
-Available via `/model` command or `--model` flag:
-- Claude Sonnet 4.5 (default)
-- Claude Sonnet 4
-- GPT-5
+Available via `/model` command or `--model` flag. Models and Premium request costs (as of 2026-02-28):
 
-For Ashigaru: Model set at startup via settings.yaml. Runtime switching via `type: model_switch` available but rarely needed.
+| Model | Premium/req | Notes |
+|-------|-------------|-------|
+| **GPT-4.1** | **0** | Recommended for ashigaru (unlimited) |
+| **GPT-5 mini** | **0** | Lightweight tasks (unlimited) |
+| GPT-5.1-codex-mini | 0.33 | |
+| Claude Haiku 4.5 | 0.33 | |
+| Claude Sonnet 4/4.5/4.6 | 1 | Requires enablement on some plans |
+| GPT-5.1/5.2/5.3-codex | 1 | |
+| Gemini 3 Pro Preview | 1 | |
+| Claude Opus 4.5/4.6 | 3 | High-cost |
+| Claude Opus 4.6 fast | 30 | Preview, may require enablement |
+
+For Ashigaru: Model set at startup via settings.yaml (`--model` flag). Runtime switching via `type: model_switch` available but rarely needed.
 
 ## tmux Interaction
 
-**WARNING: Copilot CLI tmux integration is UNVERIFIED.**
+**Verified on v0.0.420 (2026-02-28 tested).**
 
 | Aspect | Status |
 |--------|--------|
-| TUI in tmux pane | Expected to work (TUI-based) |
-| send-keys | **Untested** — TUI may use alt-screen |
-| capture-pane | **Untested** — alt-screen may interfere |
-| Prompt detection | Unknown prompt format (not `❯`) |
-| Non-interactive pipe | Unconfirmed (`copilot -p` undocumented) |
+| TUI in tmux pane | ✅ Works |
+| send-keys | ✅ Works — Enter sends prompt, text input received correctly |
+| capture-pane | ✅ Works — response text readable, no alt-screen interference |
+| Prompt detection | ✅ `❯` prompt visible in capture-pane output |
+| Non-interactive pipe | ✅ `copilot -p "prompt" --model <model>` works |
+| `/clear` via send-keys | ✅ Works — requires Enter×2 (1st=autocomplete select, 2nd=execute) |
 
-For the 将軍 system, tmux compatibility is a **high-risk area** requiring dedicated testing.
-
-### Potential Workarounds
-- `!` prefix for shell commands may bypass TUI input issues
-- `/delegate` to remote coding agent avoids local TUI interaction
-- Ctrl+C + restart as alternative to `/clear`
+### send-keys Notes
+- Text input + Enter = prompt submission (single Enter suffices for normal messages)
+- `/clear` + Enter×2 = context reset (autocomplete dropdown appears on first Enter)
+- Ctrl+C = stop current operation (does NOT exit CLI)
 
 ## Limitations (vs Claude Code)
 
 | Feature | Claude Code | Copilot CLI |
 |---------|------------|-------------|
-| tmux integration | ✅ Battle-tested | ⚠️ Untested |
-| Non-interactive mode | ✅ `claude -p` | ⚠️ Unconfirmed |
-| `/clear` context reset | ✅ Available | ❌ None (use /compact or restart) |
+| tmux integration | ✅ Battle-tested | ✅ Verified (v0.0.420) |
+| Non-interactive mode | ✅ `claude -p` | ✅ `copilot -p` |
+| `/clear` context reset | ✅ Available | ✅ `/clear`, `/new` available |
 | Memory MCP | ✅ Persistent knowledge graph | ❌ No equivalent |
-| Cost model | API token-based (no limits) | Subscription (premium req limits) |
-| 8-agent parallel | ✅ Proven | ❌ Premium req limits prohibitive |
+| Cost model | Pro plan (rate-limited) | Subscription (premium req limits, GPT-4.1=0消費) |
+| 8-agent parallel | ✅ Proven (but Pro rate-limited) | ✅ GPT-4.1 (0x) enables unlimited parallel |
 | Dedicated file tools | ✅ Read/Write/Edit/Glob/Grep | General file tools with approval |
 | Web search | ✅ WebSearch + WebFetch | web_fetch only |
 | Task delegation | Task tool (local subagents) | /delegate (remote coding agent) |
+| GitHub MCP | Via .mcp.json config | ✅ Built-in (issues, PRs, Copilot Spaces) |
 
-## Compaction Recovery
+## Compaction & Recovery
 
-Copilot CLI uses auto-compaction at 95% token limit. No `/clear` equivalent exists.
+Copilot CLI uses auto-compaction at 95% token limit. `/clear` and `/new` are also available for full context reset.
 
-For the 将軍 system, if Copilot CLI is integrated:
+For the 将軍 system:
 1. Auto-compaction handles most cases automatically
-2. `/compact` can be sent via send-keys if tmux integration works
-3. Session state preserved through compaction (unlike `/clear` which resets)
-4. CLAUDE.md-based recovery not needed if context is preserved; use `AGENTS.md` + `.github/copilot-instructions.md` instead
+2. `/clear` via send-keys works (Enter×2 required for autocomplete)
+3. `/compact` for manual context reduction without full reset
+4. On `/clear`, agent recovers via `.github/copilot-instructions.md` (auto-loaded) → Session Start procedure
 
 ## Configuration Files Summary
 

@@ -745,6 +745,19 @@ RESULTS+=("実行権限: OK")
 # ============================================================
 log_step "STEP 10: alias設定"
 
+# --- watcher_supervisor 自動起動 ---
+start_watcher_supervisor() {
+    if pgrep -f "watcher_supervisor.sh" > /dev/null 2>&1; then
+        log_info "watcher_supervisor は既に起動中"
+        return 0
+    fi
+    export PATH="$HOME/.local/bin:$PATH"
+    export LD_LIBRARY_PATH="$HOME/.local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    nohup bash scripts/watcher_supervisor.sh >> logs/watcher_supervisor.log 2>&1 &
+    log_info "watcher_supervisor を起動しました (PID: $!)"
+}
+start_watcher_supervisor
+
 # alias追加対象ファイル
 BASHRC_FILE="$HOME/.bashrc"
 

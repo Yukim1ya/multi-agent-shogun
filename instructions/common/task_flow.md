@@ -84,6 +84,7 @@ Note:
   - Allowed: read-only
   - Forbidden: flipping back to pending without creating a new entry
 
+<!-- BEGIN_SHOGUN_KARO_ONLY -->
 ## Immediate Delegation Principle (Shogun)
 
 **Delegate to Karo immediately and end your turn** so the Lord can input next command.
@@ -154,6 +155,8 @@ Cross-reference with dashboard.md — process any reports not yet reflected.
 ❌ Wrong (polling):
   cmd_008 dispatch → sleep 30 → capture-pane → check status → sleep 30 ...
 ```
+
+<!-- END_SHOGUN_KARO_ONLY -->
 
 ## Timestamps
 
