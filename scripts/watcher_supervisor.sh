@@ -62,5 +62,12 @@ while true; do
     start_watcher_if_missing "ashigaru5" "multiagent:ashigaru.4" "logs/inbox_watcher_ashigaru5.log"
     start_watcher_if_missing "ashigaru6" "multiagent:ashigaru.5" "logs/inbox_watcher_ashigaru6.log"
     start_watcher_if_missing "ashigaru7" "multiagent:ashigaru.6" "logs/inbox_watcher_ashigaru7.log"
+
+    # agent_health_monitorの起動（未起動の場合のみ）
+    if ! pgrep -f "agent_health_monitor.sh" > /dev/null; then
+        nohup bash scripts/agent_health_monitor.sh >> "logs/health_monitor_startup.log" 2>&1 &
+        echo "[$(date)] agent_health_monitor started: PID=$!" >&2
+    fi
+
     sleep 5
 done
