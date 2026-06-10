@@ -745,9 +745,9 @@ dismiss_feedback_prompt_if_present() {
     pane_content=$(timeout 2 tmux capture-pane -t "$PANE_TARGET" -p 2>/dev/null || true)
     if echo "$pane_content" | grep -q "How is Claude doing this session"; then
         echo "[$(date)] [FEEDBACK] Auto-dismissing feedback prompt for $AGENT_ID" >&2
-        timeout 5 tmux send-keys -t "$PANE_TARGET" "0" 2>/dev/null || true
+        timeout 5 tmux send-keys -t "$PANE_TARGET" Escape 2>/dev/null || true
         sleep 0.3
-        timeout 5 tmux send-keys -t "$PANE_TARGET" Enter 2>/dev/null || true
+        timeout 5 tmux send-keys -t "$PANE_TARGET" Escape 2>/dev/null || true
         return 0
     fi
     return 1
@@ -1105,7 +1105,10 @@ for s in data.get('specials', []):
             # Claude Code: proactively dismiss feedback prompt on each idle cycle.
             # This prevents the prompt from accumulating across turns and causing
             # role mis-identification (e.g. karo calling itself shogun).
-            dismiss_feedback_prompt_if_present || true
+            # Shogun is human-controlled — skip feedback dismissal to avoid injecting keystrokes.
+            if [ "$AGENT_ID" != "shogun" ]; then
+                dismiss_feedback_prompt_if_present || true
+            fi
             # Shogun: only clear input when pane is not active (Lord is away)
             if [ "$AGENT_ID" = "shogun" ] && pane_is_active; then
                 : # Lord may be typing — skip C-u
@@ -1135,6 +1138,13 @@ while true; do
     # Exit if target pane no longer exists (prevents zombie watchers — Bug 2 fix)
     if ! tmux display-message -t "$PANE_TARGET" -p '#{pane_id}' &>/dev/null; then
         echo "[$(date)] inbox_watcher: pane $PANE_TARGET no longer exists. Exiting." >&2
+        exit 0
+    fi
+
+    # Graceful self-restart: exit if restart flag file exists (watcher_supervisor will restart)
+    if [ -f "/tmp/restart_watcher_${AGENT_ID}" ]; then
+        echo "[$(date)] inbox_watcher: restart flag detected for $AGENT_ID. Exiting for restart." >&2
+        rm -f "/tmp/restart_watcher_${AGENT_ID}"
         exit 0
     fi
 

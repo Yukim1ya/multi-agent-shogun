@@ -160,7 +160,8 @@ When you receive `inboxN` (e.g. `inbox3`):
 1. `Read queue/inbox/{your_id}.yaml`
 2. Find all entries with `read: false`
 3. Process each message according to its `type`
-4. Update each processed entry: `read: true` (use Edit tool)
+4. Mark all processed entries as read: `bash scripts/inbox_mark_read.sh {your_id}`
+   **Edit toolは使うな** — inbox_watcher.shとの競合で "Error editing file" になる
 5. Resume normal workflow
 
 ### MANDATORY Post-Task Inbox Check

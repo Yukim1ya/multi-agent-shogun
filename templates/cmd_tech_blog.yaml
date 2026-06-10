@@ -1,0 +1,91 @@
+# 技術ブログ記事作成パイプライン コマンドテンプレート
+# 使い方: このファイルをコピーして cmd_XXX.yaml にリネームし、<angle bracket>部分を埋めて家老に送る
+#
+# 例:
+#   cp templates/cmd_tech_blog.yaml queue/tasks/cmd_050.yaml
+#   # <...>を編集
+#   bash scripts/inbox_write.sh karo "cmd_050を書いた。実行せよ。" cmd_new shogun
+
+cmd_id: <cmd_XXX>
+type: blog_pipeline
+project: tech_blog
+project_context: context/tech_blog.md
+status: open
+created_by: shogun
+
+title: "技術記事作成: <記事テーマの一言説明>"
+
+# ---- 将軍が指定するパラメータ ----
+article_request:
+  topic: "<記事テーマ（例: Splunk で Kerberoasting を検知する）>"
+  topic_area: "<splunk | ad_attack | nutanix | riss | general>"
+  target_reader: "<想定読者（例: Blue Teamのセキュリティエンジニア）>"
+  notes: "<特に盛り込みたい内容・制約があれば記載。なければ空>"
+
+# ---- 家老が管理するパイプライン状態 ----
+pipeline:
+  phase1_proposal:
+    status: pending          # pending | in_progress | review | approved | rejected
+    assigned_to: null        # 家老が足軽を割り当てる
+    reviewer: null
+    gunshi_verdict: null     # approved | revision_needed
+
+  phase2_article:
+    status: pending
+    assigned_to: null
+    reviewer: null
+    gunshi_verdict: null
+    output_file: null        # articles/YYYYMMDD_<slug>.md
+
+  phase3_upload:
+    status: pending
+    github_url: null
+
+# ---- 家老向け実行手順 ----
+karo_instructions: |
+  ## Phase 1: 企画作成
+
+  1. 空き足軽を1名選び、以下の内容でsubtaskを作成する:
+     - type: proposal_creation
+     - 与える情報: article_request の内容 + context/tech_blog.md のフェーズ1仕様
+     - 成果物: YAML形式の企画案（context/tech_blog.md の proposal フォーマット通り）
+     - 保存先: queue/reports/<ashigaru_N>_report.yaml
+
+  2. 別の空き足軽を1名選び、一次レビューのsubtaskを作成する:
+     - type: proposal_review
+     - 与える情報: 企画案YAML + context/tech_blog.md の一次レビュー確認項目
+     - 成果物: OK/NG + NGの場合は具体的な指摘
+
+  3. 一次レビューOKなら軍師にレビューを依頼する。
+
+  4. 軍師の判定が approved → Phase 2 へ。
+     revision_needed → 企画作成足軽に修正依頼（redo）。
+
+  ## Phase 2: 記事執筆
+
+  5. 空き足軽を1名選び、以下の内容でsubtaskを作成する:
+     - type: article_writing
+     - 与える情報: 承認済み企画案 + context/tech_blog.md のフォーマット仕様
+     - 成果物: Markdown記事（articles/YYYYMMDD_<slug>.md）
+     - ファイルは queue/reports/ に一時保存してから家老が移動する
+
+  6. 別の空き足軽を1名選び、一次レビューのsubtaskを作成する:
+     - type: article_review
+     - 与える情報: 記事Markdown + context/tech_blog.md の一次レビュー確認項目
+
+  7. 一次レビューOKなら軍師にレビューを依頼する。
+
+  8. 軍師の判定が approved → Phase 3 へ。
+     revision_needed → 執筆足軽に修正依頼（redo）。
+
+  ## Phase 3: GitHubアップロード
+
+  9. context/tech_blog.md の「フェーズ3」の手順でアップロードする。
+
+  10. アップロード完了後、dashboard.md を更新し、github_url を記録する。
+
+# ---- 完了条件 ----
+acceptance_criteria:
+  - 軍師がarticle_writingの成果物を approved と判定していること
+  - articles/ ディレクトリに記事Markdownがコミットされていること
+  - github_url が dashboard.md に記録されていること

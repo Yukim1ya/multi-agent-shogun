@@ -205,7 +205,8 @@ while [[ $# -gt 0 ]]; do
             echo "エイリアス:"
             echo "  csst  → cd /mnt/c/tools/multi-agent-shogun && ./shutsujin_departure.sh"
             echo "  css   → tmux attach-session -t shogun"
-            echo "  csm   → tmux attach-session -t multiagent"
+            echo "  csl   → tmux attach-session -t leaders   (家老・軍師)"
+            echo "  csa   → tmux attach-session -t ashigaru  (足軽1-7)"
             echo ""
             exit 0
             ;;
