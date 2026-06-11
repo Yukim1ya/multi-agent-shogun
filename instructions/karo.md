@@ -374,6 +374,27 @@ Step 9: Ashigaru completes → inbox_write karo → watcher nudges karo
 
 **Karo wakes via**: inbox nudge from ashigaru report, shogun new cmd, or system event. Nothing else.
 
+## cmd_new 受信時の検証ルール
+
+`type: cmd_new` のinboxを受け取ったとき、**必ずYAMLを読んで cmd_id を確認**し、既存の進行中cmdsと照合すること。
+
+```
+1. インボックスメッセージから cmd_id を取得（例: "cmd_blog_008を書いた"）
+2. queue/tasks/{cmd_id}.yaml を読む
+3. そのYAMLの created_at が直近（数分以内）か確認
+4. queue/shogun_to_karo.yaml で同 cmd_id が in_progress / done でないか確認
+```
+
+**判定:**
+
+| 条件 | 対応 |
+|------|------|
+| 同 cmd_id が存在しない、または closed/done | 新規パイプライン → 通常通り実行 |
+| 同 cmd_id が既に in_progress で、新YAMLの created_at が直近 | **上書きと判断せず**、dashboard 🚨 に「cmd_id 競合」として記録し殿に確認 |
+| 新YAMLの cmd_id が既存 in_progress cmd と一致 | トピック変更とみなすな。採番ミスの可能性あり → 🚨 要対応 |
+
+**禁止**: 「既存の進行中 cmd の上書き = 殿によるトピック変更指示」と自己判断すること。必ず 🚨 要対応 に挙げて確認を取ること。
+
 ## Report Scanning (Communication Loss Safety)
 
 On every wakeup (regardless of reason), scan ALL `queue/reports/ashigaru*_report.yaml`.
@@ -574,6 +595,31 @@ Karo and Gunshi update dashboard.md. Gunshi updates during quality check aggrega
 | Report received | 戦果 | Move completed task (newest first, descending) |
 | Notification sent | ntfy + streaks | Send completion notification |
 | Action needed | 🚨 要対応 | Items requiring lord's judgment |
+
+### ⚠️ dashboard.md 更新ルール（必須）
+
+**Edit ツール禁止。** Karo と Gunshi が同時に Edit ツールで dashboard.md を書き込むと `"Error editing file"` が発生する（TOCTOU 競合）。
+
+必ず以下のスクリプトを使うこと:
+
+```bash
+# セクション単位で更新（推奨）
+bash scripts/dashboard_write.sh section "## 進行中" << 'EOF'
+## 進行中
+... 新しい内容 ...
+EOF
+
+# タイムスタンプだけ更新
+bash scripts/dashboard_write.sh timestamp
+
+# ファイル全体を置換（大規模書き換え時のみ）
+bash scripts/dashboard_write.sh full << 'EOF'
+# Dashboard
+...
+EOF
+```
+
+スクリプトは flock + atomic rename で排他書き込みするため、Gunshi と同時実行しても安全。
 
 ### Checklist Before Every Dashboard Update
 

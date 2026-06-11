@@ -46,15 +46,15 @@ log() {
 # ─── エージェント定義（pane → agent_id マッピング）───
 # 参考: shutsujin_departure.sh の tmux セッション構成
 declare -A AGENT_PANES=(
-    [multiagent:agents.0]="karo"
-    [multiagent:agents.1]="gunshi"
-    [multiagent:ashigaru.0]="ashigaru1"
-    [multiagent:ashigaru.1]="ashigaru2"
-    [multiagent:ashigaru.2]="ashigaru3"
-    [multiagent:ashigaru.3]="ashigaru4"
-    [multiagent:ashigaru.4]="ashigaru5"
-    [multiagent:ashigaru.5]="ashigaru6"
-    [multiagent:ashigaru.6]="ashigaru7"
+    [leaders:agents.0]="karo"
+    [leaders:agents.1]="gunshi"
+    [ashigaru:ashigaru.0]="ashigaru1"
+    [ashigaru:ashigaru.1]="ashigaru2"
+    [ashigaru:ashigaru.2]="ashigaru3"
+    [ashigaru:ashigaru.3]="ashigaru4"
+    [ashigaru:ashigaru.4]="ashigaru5"
+    [ashigaru:ashigaru.5]="ashigaru6"
+    [ashigaru:ashigaru.6]="ashigaru7"
 )
 
 # ─── 再起動タイムスタンプ管理 ───

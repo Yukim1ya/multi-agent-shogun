@@ -59,9 +59,12 @@ next_blog_num() {
   local max=0
   for f in "$TASKS_DIR"/cmd_blog_*.yaml; do
     [[ -f "$f" ]] || continue
-    local num
-    num=$(basename "$f" .yaml | grep -oP '\d+$')
-    [[ -n "$num" && "$num" -gt "$max" ]] && max=$num
+    # ^cmd_blog_NNN$ にのみマッチ。cmd_blog_008_redo.yaml 等のサフィックス付きは除外
+    local num num_dec
+    num=$(basename "$f" .yaml | grep -oP '^cmd_blog_\K\d+$')
+    [[ -z "$num" ]] && continue
+    num_dec=$(( 10#$num ))  # 先頭ゼロを10進数として扱う（008をoctalと誤解しない）
+    [[ "$num_dec" -gt "$max" ]] && max=$num_dec
   done
   printf "%03d" $((max + 1))
 }

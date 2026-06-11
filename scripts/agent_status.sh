@@ -217,16 +217,16 @@ fi
 for i in "${!AGENTS[@]}"; do
     agent="${AGENTS[$i]}"
     case "$agent" in
-        karo)       pane_target="multiagent:agents.$((PANE_BASE + 0))" ;;
-        gunshi)     pane_target="multiagent:agents.$((PANE_BASE + 1))" ;;
-        ashigaru1)  pane_target="multiagent:ashigaru.$((PANE_BASE + 0))" ;;
-        ashigaru2)  pane_target="multiagent:ashigaru.$((PANE_BASE + 1))" ;;
-        ashigaru3)  pane_target="multiagent:ashigaru.$((PANE_BASE + 2))" ;;
-        ashigaru4)  pane_target="multiagent:ashigaru.$((PANE_BASE + 3))" ;;
-        ashigaru5)  pane_target="multiagent:ashigaru.$((PANE_BASE + 4))" ;;
-        ashigaru6)  pane_target="multiagent:ashigaru.$((PANE_BASE + 5))" ;;
-        ashigaru7)  pane_target="multiagent:ashigaru.$((PANE_BASE + 6))" ;;
-        *)          pane_target="multiagent:agents.$((PANE_BASE + 0))" ;;
+        karo)       pane_target="leaders:agents.$((PANE_BASE + 0))" ;;
+        gunshi)     pane_target="leaders:agents.$((PANE_BASE + 1))" ;;
+        ashigaru1)  pane_target="ashigaru:ashigaru.$((PANE_BASE + 0))" ;;
+        ashigaru2)  pane_target="ashigaru:ashigaru.$((PANE_BASE + 1))" ;;
+        ashigaru3)  pane_target="ashigaru:ashigaru.$((PANE_BASE + 2))" ;;
+        ashigaru4)  pane_target="ashigaru:ashigaru.$((PANE_BASE + 3))" ;;
+        ashigaru5)  pane_target="ashigaru:ashigaru.$((PANE_BASE + 4))" ;;
+        ashigaru6)  pane_target="ashigaru:ashigaru.$((PANE_BASE + 5))" ;;
+        ashigaru7)  pane_target="ashigaru:ashigaru.$((PANE_BASE + 6))" ;;
+        *)          pane_target="leaders:agents.$((PANE_BASE + 0))" ;;
     esac
 
     # CLI type

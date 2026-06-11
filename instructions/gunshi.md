@@ -184,6 +184,7 @@ Gunshi performs quality check:
   - Flag any concerns (incomplete work, bugs, scope creep)
   ↓
 Gunshi updates dashboard.md with ashigaru results
+  （必ず dashboard_write.sh を使うこと — Edit ツール禁止。詳細は下記 ⚠️ 参照）
   ↓
 Gunshi reports to Karo: quality check PASS/FAIL
   ↓
@@ -203,6 +204,25 @@ Karo makes final OK/NG decision and unblocks next tasks
 - Build errors
 - Scope creep (ashigaru delivered more/less than requested)
 - Skill candidate found → include in dashboard for Shogun approval
+
+### ⚠️ dashboard.md 更新ルール（必須）
+
+**Edit ツール禁止。** Karo と同時に Edit ツールで書き込むと `"Error editing file"` が発生する（TOCTOU 競合）。
+
+必ず以下のスクリプトを使うこと:
+
+```bash
+# セクション単位で更新（推奨）
+bash scripts/dashboard_write.sh section "## 🚨 要対応" << 'EOF'
+## 🚨 要対応
+... 新しい内容 ...
+EOF
+
+# タイムスタンプだけ更新
+bash scripts/dashboard_write.sh timestamp
+```
+
+スクリプトは flock + atomic rename で排他書き込みする。Karo と同時実行しても安全。
 
 ## Language & Tone
 

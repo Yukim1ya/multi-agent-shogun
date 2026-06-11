@@ -59,22 +59,22 @@ usage() {
 # ─── Agent ID → tmux pane 解決 ───
 resolve_pane() {
     local agent_id="$1"
-    # multiagent セッションの pane 番号体系
-    # shutsujin_departure.sh: karo=0, ashigaru1=1, ..., ashigaru7=7, gunshi=8
+    # leaders/ashigaru セッションの pane 番号体系
+    # leaders: karo=0, gunshi=1 / ashigaru: ashigaru1=0 ... ashigaru7=6
     local pane_base
-    pane_base=$(tmux show-options -t multiagent -v @pane_base 2>/dev/null || echo "0")
+    pane_base=$(tmux show-options -t leaders -v @pane_base 2>/dev/null || echo "0")
 
     case "$agent_id" in
         shogun)     echo "shogun:0.0" ;;
-        karo)       echo "multiagent:agents.$((pane_base + 0))" ;;
-        gunshi)     echo "multiagent:agents.$((pane_base + 1))" ;;
-        ashigaru1)  echo "multiagent:ashigaru.$((pane_base + 0))" ;;
-        ashigaru2)  echo "multiagent:ashigaru.$((pane_base + 1))" ;;
-        ashigaru3)  echo "multiagent:ashigaru.$((pane_base + 2))" ;;
-        ashigaru4)  echo "multiagent:ashigaru.$((pane_base + 3))" ;;
-        ashigaru5)  echo "multiagent:ashigaru.$((pane_base + 4))" ;;
-        ashigaru6)  echo "multiagent:ashigaru.$((pane_base + 5))" ;;
-        ashigaru7)  echo "multiagent:ashigaru.$((pane_base + 6))" ;;
+        karo)       echo "leaders:agents.$((pane_base + 0))" ;;
+        gunshi)     echo "leaders:agents.$((pane_base + 1))" ;;
+        ashigaru1)  echo "ashigaru:ashigaru.$((pane_base + 0))" ;;
+        ashigaru2)  echo "ashigaru:ashigaru.$((pane_base + 1))" ;;
+        ashigaru3)  echo "ashigaru:ashigaru.$((pane_base + 2))" ;;
+        ashigaru4)  echo "ashigaru:ashigaru.$((pane_base + 3))" ;;
+        ashigaru5)  echo "ashigaru:ashigaru.$((pane_base + 4))" ;;
+        ashigaru6)  echo "ashigaru:ashigaru.$((pane_base + 5))" ;;
+        ashigaru7)  echo "ashigaru:ashigaru.$((pane_base + 6))" ;;
         *)
             log "ERROR: Unknown agent_id: $agent_id"
             return 1
