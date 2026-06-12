@@ -299,7 +299,8 @@ cd /mnt/c/tools/multi-agent-shogun
 4. ＋ボタンで新しいウィンドウを開いて、部下の様子も見る：
    ```sh
    ssh あなたのユーザー名@あなたのTailscale IP
-   csm    # 家老+足軽の9ペインが広がる
+   csl    # 家老+軍師の2ペイン
+   csa    # 足軽1〜7の7ペイン
    ```
 
 **切り方：** Termuxのウィンドウをスワイプで閉じるだけ。tmuxセッションは生き残る。AI部下は黙々と作業を続けている。
@@ -1372,7 +1373,8 @@ tmux kill-session -t multiagent
 ```bash
 alias csst='cd /mnt/c/tools/multi-agent-shogun && ./shutsujin_departure.sh'
 alias css='tmux attach-session -t shogun'      # 将軍ウィンドウの起動
-alias csm='tmux attach-session -t multiagent'  # 家老・足軽ウィンドウの起動
+alias csl='tmux attach-session -t leaders'      # 家老・軍師ウィンドウの起動
+alias csa='tmux attach-session -t ashigaru'     # 足軽ウィンドウの起動
 ```
 
 ※ エイリアスを反映するには `source ~/.bashrc` を実行するか、PowerShellで `wsl --shutdown` してからターミナルを開き直してください。

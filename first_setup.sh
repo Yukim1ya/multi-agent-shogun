@@ -761,54 +761,52 @@ start_watcher_supervisor
 # alias追加対象ファイル
 BASHRC_FILE="$HOME/.bashrc"
 
-# css/csm を関数として定義（destroy-unattached で自動掃除）
+# css/csl/csa を関数として定義（destroy-unattached で自動掃除）
 # - 複数端末から接続しても画面サイズが干渉しない
 # - SSH切断・アプリ終了時に一時セッションが自動消滅
-# - 本体セッション (shogun/multiagent) は絶対に消えない
+# - 本体セッション (shogun/leaders/ashigaru) は絶対に消えない
 CSS_FUNC='css() { local s="shogun-$$"; local cols=$(tput cols 2>/dev/null || echo 80); tmux new-session -d -t shogun -s "$s" 2>/dev/null && tmux set-option -t "$s" destroy-unattached on 2>/dev/null; if [ "$cols" -lt 80 ]; then tmux new-window -t "$s" -n mobile 2>/dev/null; tmux attach-session -t "$s:mobile" 2>/dev/null || tmux attach-session -t shogun; else tmux attach-session -t "$s" 2>/dev/null || tmux attach-session -t shogun; fi; }'
-CSM_FUNC='csm() { local s="multi-$$"; local cols=$(tput cols 2>/dev/null || echo 80); tmux new-session -d -t multiagent -s "$s" 2>/dev/null && tmux set-option -t "$s" destroy-unattached on 2>/dev/null; if [ "$cols" -lt 80 ]; then tmux new-window -t "$s" -n mobile 2>/dev/null; tmux attach-session -t "$s:mobile" 2>/dev/null || tmux attach-session -t multiagent; else tmux attach-session -t "$s" 2>/dev/null || tmux attach-session -t multiagent; fi; }'
+CSL_FUNC='csl() { local s="lead-$$"; local cols=$(tput cols 2>/dev/null || echo 80); tmux new-session -d -t leaders -s "$s" 2>/dev/null && tmux set-option -t "$s" destroy-unattached on 2>/dev/null; if [ "$cols" -lt 80 ]; then tmux new-window -t "$s" -n mobile 2>/dev/null; tmux attach-session -t "$s:mobile" 2>/dev/null || tmux attach-session -t leaders; else tmux attach-session -t "$s" 2>/dev/null || tmux attach-session -t leaders; fi; }'
+CSA_FUNC='csa() { local s="ashi-$$"; local cols=$(tput cols 2>/dev/null || echo 80); tmux new-session -d -t ashigaru -s "$s" 2>/dev/null && tmux set-option -t "$s" destroy-unattached on 2>/dev/null; if [ "$cols" -lt 80 ]; then tmux new-window -t "$s" -n mobile 2>/dev/null; tmux attach-session -t "$s:mobile" 2>/dev/null || tmux attach-session -t ashigaru; else tmux attach-session -t "$s" 2>/dev/null || tmux attach-session -t ashigaru; fi; }'
 
 ALIAS_ADDED=false
 
 if [ -f "$BASHRC_FILE" ]; then
     # 古い alias 形式を削除（存在する場合）
-    if grep -q "alias css=" "$BASHRC_FILE" 2>/dev/null; then
-        sed -i '/alias css=/d' "$BASHRC_FILE"
-        log_info "旧 alias css を削除しました"
-    fi
-    if grep -q "alias csm=" "$BASHRC_FILE" 2>/dev/null; then
-        sed -i '/alias csm=/d' "$BASHRC_FILE"
-        log_info "旧 alias csm を削除しました"
-    fi
-
-    # css 関数
-    if ! grep -q "^css()" "$BASHRC_FILE" 2>/dev/null; then
-        if ! grep -q "multi-agent-shogun aliases" "$BASHRC_FILE" 2>/dev/null; then
-            echo "" >> "$BASHRC_FILE"
-            echo "# multi-agent-shogun aliases (added by first_setup.sh)" >> "$BASHRC_FILE"
+    for old_alias in css csm csl csa; do
+        if grep -q "alias ${old_alias}=" "$BASHRC_FILE" 2>/dev/null; then
+            sed -i "/alias ${old_alias}=/d" "$BASHRC_FILE"
+            log_info "旧 alias ${old_alias} を削除しました"
         fi
-        echo "$CSS_FUNC" >> "$BASHRC_FILE"
-        log_info "css 関数を追加しました（将軍ウィンドウ — 自動掃除付き）"
-        ALIAS_ADDED=true
-    else
-        # 関数は存在する → 最新版に更新
-        sed -i '/^css()/d' "$BASHRC_FILE"
-        echo "$CSS_FUNC" >> "$BASHRC_FILE"
-        log_info "css 関数を更新しました"
-        ALIAS_ADDED=true
+    done
+
+    # 旧構成（multiagentセッション）向けの csm 関数を削除
+    if grep -q "^csm()" "$BASHRC_FILE" 2>/dev/null; then
+        sed -i '/^csm()/d' "$BASHRC_FILE"
+        log_info "旧 csm 関数を削除しました（multiagent → leaders/ashigaru 3セッション構成に移行）"
     fi
 
-    # csm 関数
-    if ! grep -q "^csm()" "$BASHRC_FILE" 2>/dev/null; then
-        echo "$CSM_FUNC" >> "$BASHRC_FILE"
-        log_info "csm 関数を追加しました（家老・足軽ウィンドウ — 自動掃除付き）"
-        ALIAS_ADDED=true
-    else
-        sed -i '/^csm()/d' "$BASHRC_FILE"
-        echo "$CSM_FUNC" >> "$BASHRC_FILE"
-        log_info "csm 関数を更新しました"
-        ALIAS_ADDED=true
+    if ! grep -q "multi-agent-shogun aliases" "$BASHRC_FILE" 2>/dev/null; then
+        echo "" >> "$BASHRC_FILE"
+        echo "# multi-agent-shogun aliases (added by first_setup.sh)" >> "$BASHRC_FILE"
     fi
+
+    # 接続関数を追加または最新版に更新
+    install_attach_func() {
+        local name="$1" func="$2" desc="$3"
+        if grep -q "^${name}()" "$BASHRC_FILE" 2>/dev/null; then
+            sed -i "/^${name}()/d" "$BASHRC_FILE"
+            echo "$func" >> "$BASHRC_FILE"
+            log_info "${name} 関数を更新しました（${desc}）"
+        else
+            echo "$func" >> "$BASHRC_FILE"
+            log_info "${name} 関数を追加しました（${desc} — 自動掃除付き）"
+        fi
+        ALIAS_ADDED=true
+    }
+    install_attach_func css "$CSS_FUNC" "将軍ウィンドウ"
+    install_attach_func csl "$CSL_FUNC" "家老・軍師ウィンドウ"
+    install_attach_func csa "$CSA_FUNC" "足軽ウィンドウ"
 else
     log_warn "$BASHRC_FILE が見つかりません"
 fi

@@ -299,7 +299,8 @@ Control your AI army from your phone — bed, café, or bathroom.
 4. Open a new Termux window (+ button) for workers:
    ```sh
    ssh youruser@your-tailscale-ip
-   csm    # See all 9 panes
+   csl    # Karo + Gunshi (2 panes)
+   csa    # Ashigaru 1-7 (7 panes)
    ```
 
 **Disconnect:** Just swipe the Termux window closed. tmux sessions survive — agents keep working. Temporary viewer sessions are auto-cleaned (destroy-unattached).
@@ -1441,7 +1442,8 @@ Running `first_setup.sh` automatically adds these aliases to `~/.bashrc`:
 ```bash
 alias csst='cd /mnt/c/tools/multi-agent-shogun && ./shutsujin_departure.sh'
 alias css='tmux attach-session -t shogun'      # Connect to Shogun
-alias csm='tmux attach-session -t multiagent'  # Connect to Karo + Ashigaru
+alias csl='tmux attach-session -t leaders'      # Connect to Karo + Gunshi
+alias csa='tmux attach-session -t ashigaru'     # Connect to Ashigaru
 ```
 
 To apply aliases: run `source ~/.bashrc` or restart your terminal (PowerShell: `wsl --shutdown` then reopen).
@@ -1627,7 +1629,7 @@ tmux attach-session -t multiagent
 <details>
 <summary><b>Agent crashed?</b></summary>
 
-**Do NOT use `css`/`csm` aliases to restart inside an existing tmux session.** These aliases create tmux sessions, so running them inside an existing tmux pane causes session nesting — your input breaks and the pane becomes unusable.
+**Do NOT use `css`/`csl`/`csa` aliases to restart inside an existing tmux session.** These aliases create tmux sessions, so running them inside an existing tmux pane causes session nesting — your input breaks and the pane becomes unusable.
 
 **Correct restart methods:**
 
