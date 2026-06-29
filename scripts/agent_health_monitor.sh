@@ -235,6 +235,76 @@ restart_agent() {
     fi
 }
 
+# ─── Idle+Unread ステート管理 ───
+# agent_id → 未読が最初に検出されたUNIX時刻（0=未検出）
+declare -A UNREAD_SINCE=()
+declare -A LAST_NUDGE_BY_MONITOR=()
+
+# 最後にpaneの内容が変化した時刻を追跡（stuck検出用）
+declare -A LAST_PANE_CONTENT=()
+declare -A LAST_PANE_CHANGE_TS=()
+
+# idle+unread が N秒以上続いた場合にnudgeを送る閾値
+IDLE_UNREAD_NUDGE_THRESHOLD=${IDLE_UNREAD_NUDGE_THRESHOLD:-300}  # 5分
+# nudge送信間隔（同一agentに連続して送らない最低間隔）
+MONITOR_NUDGE_COOLDOWN=${MONITOR_NUDGE_COOLDOWN:-180}  # 3分
+
+# paneがstuck（出力が変化しない）かを判定するためにコンテンツを記録
+record_pane_content() {
+    local pane="$1"
+    local agent_id="$2"
+    local content
+    content=$(tmux capture-pane -t "$pane" -p 2>/dev/null | tail -5 | tr -d '\n' | tr -s ' ')
+    local prev="${LAST_PANE_CONTENT[$agent_id]:-}"
+    if [ "$content" != "$prev" ]; then
+        LAST_PANE_CONTENT[$agent_id]="$content"
+        LAST_PANE_CHANGE_TS[$agent_id]=$(date +%s)
+    fi
+}
+
+# agent が実際に作業中（出力変化あり）かを判定
+is_pane_stuck() {
+    local agent_id="$1"
+    local threshold="${2:-120}"  # デフォルト2分変化なしでstuck
+    local last_change="${LAST_PANE_CHANGE_TS[$agent_id]:-0}"
+    if [ "$last_change" -eq 0 ]; then return 0; fi  # 未記録→stuckとみなさない
+    local elapsed=$(( $(date +%s) - last_change ))
+    [ $elapsed -ge $threshold ]
+}
+
+# idle+unread タイマーのリセット
+reset_unread_timer() {
+    local agent_id="$1"
+    unset "UNREAD_SINCE[$agent_id]" 2>/dev/null || true
+}
+
+# nudge送信（monitor用、cooldown付き）
+send_monitor_nudge() {
+    local pane="$1"
+    local agent_id="$2"
+    local reason="$3"
+
+    local now
+    now=$(date +%s)
+    local last_nudge="${LAST_NUDGE_BY_MONITOR[$agent_id]:-0}"
+    local elapsed=$(( now - last_nudge ))
+
+    if [ $elapsed -lt $MONITOR_NUDGE_COOLDOWN ]; then
+        log "DEBUG" "Monitor nudge for $agent_id suppressed (cooldown: ${elapsed}s < ${MONITOR_NUDGE_COOLDOWN}s)"
+        return 0
+    fi
+
+    local unread_count
+    unread_count=$(grep -c "read: false" "${INBOX_DIR}/${agent_id}.yaml" 2>/dev/null || echo 0)
+
+    if [ "${unread_count:-0}" -gt 0 ]; then
+        tmux send-keys -t "$pane" "inbox${unread_count}" Enter 2>/dev/null || true
+        LAST_NUDGE_BY_MONITOR[$agent_id]=$now
+        UNREAD_SINCE[$agent_id]=$now  # タイマーをリセット（次の5分待ちから再計測）
+        log "RECOVER" "[idle+unread] Nudged $agent_id: $reason (${unread_count} unread)"
+    fi
+}
+
 # ─── メインループ ───
 main_loop() {
     log "INFO" "agent_health_monitor started (PID $$)"
@@ -243,6 +313,7 @@ main_loop() {
 
     while true; do
         local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+        local all_ok=true
 
         # 全エージェントのチェック
         for pane in "${!AGENT_PANES[@]}"; do
@@ -252,14 +323,52 @@ main_loop() {
             current_cmd=$(get_pane_command "$pane" 2>/dev/null || echo "UNKNOWN")
 
             if [ "$current_cmd" = "bash" ]; then
-                # Claude Code落ち検出
+                # ── 検出1: Claude Code落ち（bashに戻った） ──
                 log "WARN" "$agent_id is down (pane_current_command: bash)"
                 restart_agent "$agent_id" "$pane"
+                all_ok=false
+                reset_unread_timer "$agent_id"
+
+            elif [ "$current_cmd" = "claude" ]; then
+                # ── 検出2: idle+unread（Claudeは生きているが未読放置） ──
+                # paneコンテンツの変化を記録（stuck検出のため）
+                record_pane_content "$pane" "$agent_id"
+
+                if has_unread_inbox "$agent_id"; then
+                    local first_seen="${UNREAD_SINCE[$agent_id]:-0}"
+                    local now_ts
+                    now_ts=$(date +%s)
+
+                    if [ "$first_seen" -eq 0 ]; then
+                        # 未読を初めて検出 → タイマー開始
+                        UNREAD_SINCE[$agent_id]=$now_ts
+                        log "INFO" "$agent_id has unread inbox (timer started)"
+                    else
+                        local unread_elapsed=$(( now_ts - first_seen ))
+
+                        if [ $unread_elapsed -ge $IDLE_UNREAD_NUDGE_THRESHOLD ]; then
+                            # 5分以上未読放置 → stuckの可能性 → nudge
+                            log "WARN" "$agent_id has unread inbox for ${unread_elapsed}s (threshold: ${IDLE_UNREAD_NUDGE_THRESHOLD}s)"
+                            send_monitor_nudge "$pane" "$agent_id" "unread for ${unread_elapsed}s"
+                            all_ok=false
+                        fi
+                    fi
+                else
+                    # 未読なし → タイマーリセット
+                    if [ "${UNREAD_SINCE[$agent_id]:-0}" -gt 0 ]; then
+                        log "INFO" "$agent_id inbox cleared"
+                        reset_unread_timer "$agent_id"
+                    fi
+                fi
+            else
+                # unknown/other コマンド → タイマーリセット
+                reset_unread_timer "$agent_id"
             fi
         done
 
-        # 全エージェントがOKの場合
-        log "INFO" "Health check completed (all agents ok)"
+        if $all_ok; then
+            log "INFO" "Health check completed (all agents ok)"
+        fi
 
         sleep "$loop_interval"
     done

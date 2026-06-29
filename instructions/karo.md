@@ -402,6 +402,35 @@ Cross-reference with dashboard.md — process any reports not yet reflected.
 
 **Why**: Ashigaru inbox messages may be delayed. Report files are already written and scannable as a safety net.
 
+## CRITICAL: Report File Reading — One at a Time (Context Crash Prevention)
+
+**NEVER read multiple YAML/report files in parallel in a single turn.**
+
+**Rule: Read and process report files one by one.**
+
+```
+❌ WRONG (causes context overload crash):
+  Parallel Read: ashigaru1_report.yaml + ashigaru2_report.yaml + ... + ashigaru7_report.yaml
+  → 7 large YAML files in one context window → crash → stop hook loop → stuck
+
+✅ CORRECT (sequential, safe):
+  Read ashigaru1_report.yaml → process/note status → continue
+  Read ashigaru2_report.yaml → process/note status → continue
+  ... (one at a time)
+```
+
+**Root cause**: Karo crashed repeatedly on 2026-06-28 because reading 6+ report YAMLs simultaneously exhausted the context window. The stop_hook_inbox.sh then blocked the turn end, creating an infinite crash loop that halted the entire pipeline for hours.
+
+**Limit**: Read at most **2 files per turn** when files are large (>200 lines). For task status checks, use `grep -l "status: completed"` first to identify which reports actually need reading, then read only those.
+
+```bash
+# Quick status sweep (safe — no context cost)
+grep -l "status: completed" queue/reports/ashigaru*_report.yaml
+grep -h "task_id\|status:" queue/reports/ashigaru*_report.yaml | grep -B1 "completed"
+
+# Then read only the ones you need to act on
+```
+
 ## RACE-001: No Concurrent Writes
 
 ```
