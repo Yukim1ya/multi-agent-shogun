@@ -47,6 +47,7 @@
 !scripts/ntfy.sh
 !scripts/ntfy_listener.sh
 !scripts/new_blog_article.sh
+!scripts/completion_notifier.sh
 !scripts/lib/
 !scripts/lib/agent_status.sh
 

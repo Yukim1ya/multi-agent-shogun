@@ -69,5 +69,11 @@ while true; do
         echo "[$(date)] agent_health_monitor started: PID=$!" >&2
     fi
 
+    # completion_notifierの起動（未起動の場合のみ）
+    if ! pgrep -f "completion_notifier.sh" > /dev/null; then
+        nohup bash scripts/completion_notifier.sh >> "logs/completion_notifier.log" 2>&1 &
+        echo "[$(date)] completion_notifier started: PID=$!" >&2
+    fi
+
     sleep 5
 done
